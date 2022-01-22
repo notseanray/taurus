@@ -1,40 +1,6 @@
-use serde_derive::Deserialize;
 use std::fs::File;
-use lupus::check_dir;
 use std::fs;
-
-#[derive(Deserialize)]
-pub struct Session {
-    pub name: String,
-    pub description: String,
-    pub host: String,
-    pub game: Option<Game>,
-    pub rcon: Option<Rcon>,
-}
-
-#[derive(Deserialize)]
-pub struct Game {
-    pub file_path: Option<String>,
-    pub backup_keep: Option<u64>,
-    pub in_game_cmd: bool,
-}
-
-#[derive(Deserialize)]
-pub struct Rcon {
-    ip: Option<String>,
-    port: u64,
-    password: String,
-}
-
-#[derive(Deserialize)]
-pub struct Config {
-    pub ws_ip: String,
-    pub ws_port: u64,
-    pub backup_location: String,
-    pub scripts_file: Option<Vec<String>>,
-    pub restart_script: Option<String>,
-    pub recompile_directory: Option<String>,
-}
+use lupus::*;
 
 pub fn load_config(path: String) -> Config {
     if !check_dir(path.to_owned() + "/config.toml") {
@@ -92,10 +58,38 @@ backup_location: ''
 
 }
 
+pub fn load_sessions(path: String) -> Vec<Session> {
+    if !check_dir(path.to_owned() + "/servers/") {
+        template_files(path.to_owned());
+    }
+
+    let mut sessions = Vec::new();
+
+    for i in fs::read_dir(path.to_owned() + "/servers/")
+        .expect("*error: failed to read server directory") {
+        let data = match fs::read_to_string(i.unwrap().path()) {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+
+        match toml::from_str(&data) {
+            Ok(t) => sessions.push(t),
+            Err(e) => {
+                eprintln!("*error: {}", e);
+                eprintln!("*fatal: invalid server config! exiting");
+                std::process::exit(1);
+            }
+        };
+    }
+    sessions
+}
+
+// TODO
+// check if servers.toml will function correctly
 fn template_files(path: String) {
     let files = [
         "config.toml", 
-        "servers.toml", 
+        "servers/servers.toml", 
         "scripts.toml"
     ];
 

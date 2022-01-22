@@ -15,7 +15,7 @@ serde = "1.0.117"
 serde_derive = "1.0.117"
 libc = "*"
 regex = "1.5.4"
-rcon = "0"
+rcon = { version = "0.6.0", features = ["rt-async-std"] }
 toml = "0.5.3"
-
-#https://docs.rs/evalexpr/latest/evalexpr/index.html
+sysinfo = "0.22.3"
+evalexpr = "7.0.0"

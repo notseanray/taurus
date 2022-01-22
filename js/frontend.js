@@ -1,5 +1,5 @@
 const WebSocket = require('ws')
-const url = 'ws://localhost:8000/lupus'
+const url = 'ws://localhost:7500/lupus'
 const connection = new WebSocket(url)
 const prompt = require('prompt')
 
