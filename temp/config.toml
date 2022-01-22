@@ -1,0 +1,12 @@
+# lupus main configuration file
+# more information on each value at https://github.com/NotCreative21/lupus
+# if a field is commented out it is optional and will either be prefilled
+# or not used
+
+# if no ip or port is used the default is 127.0.0.1:7500
+ws_ip= '127.0.0.1'
+ws_port= 7500
+backup_location= ' '
+#scripts_file: ''
+#restart_script: ''
+#recompile_directory: ''
