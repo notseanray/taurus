@@ -1,10 +1,10 @@
-use warp::Reply;
-use warp::ws::{WebSocket, Message};
 use crate::{Clients, Result};
 use futures::{FutureExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
+use warp::ws::{Message, WebSocket};
+use warp::Reply;
 
 #[derive(Debug, Clone)]
 pub struct WsClient {
@@ -32,11 +32,7 @@ pub async fn client_connection(ws: WebSocket, clients: Clients) {
         let msg = match result {
             Ok(msg) => msg,
             Err(e) => {
-                println!(
-                    "error receiving message for id {}): {}", 
-                    uuid.clone(), 
-                    e
-                );
+                println!("error receiving message for id {}): {}", uuid.clone(), e);
                 break;
             }
         };
@@ -52,7 +48,7 @@ async fn client_msg(client_id: &str, msg: Message, clients: &Clients) {
         Err(_) => return,
     };
     let response = match message {
-        "h" => "test", 
+        "h" => "test",
         _ => return,
     };
 
@@ -88,4 +84,3 @@ async fn client_msg(client_id: &str, msg: Message, clients: &Clients) {
 pub async fn ws_handler(ws: warp::ws::Ws, clients: Clients) -> Result<impl Reply> {
     Ok(ws.on_upgrade(move |socket| client_connection(socket, clients)))
 }
-

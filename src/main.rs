@@ -1,43 +1,36 @@
-    // simple log
-    //
-    // tcp server
-    // backup loop
-    // read chat
-    // docker & tmux support - map to store settings
-    // serde
-    //
-    // script system, different timing per a script from scripts.cfg
+// simple log
+//
+// backup loop
+// read chat
+// docker & tmux support - map to store settings
+// script system, different timing per a script from scripts.cfg
 
-use std::{
-    collections::HashMap, 
-    convert::Infallible, 
-    sync::Arc,
-    env,
-};
+use std::{collections::HashMap, convert::Infallible, env, sync::Arc};
 use tokio::sync::Mutex;
 use warp::{Filter, Rejection};
 
-mod ws;
-mod config;
 mod args;
+mod backup;
 mod bridge;
-use ws::WsClient;
+mod config;
+mod ws;
+use backup::backup;
+use bridge::send_chat;
 use config::*;
 use lupus::*;
-use bridge::send_chat;
 use std::time::{Duration, Instant};
+use ws::WsClient;
 
 type Clients = Arc<Mutex<HashMap<String, WsClient>>>;
 type Result<T> = std::result::Result<T, Rejection>;
 
-#[tokio::main(flavor = "multi_thread", worker_threads = 10)]
+#[tokio::main(flavor = "multi_thread", worker_threads = 8)]
 async fn main() {
-
     let startup = Instant::now();
 
     let args: Vec<String> = env::args().collect();
 
-    let path = args[0].to_owned()[..args[0].len() - 6].to_string(); 
+    let path = args[0].to_owned()[..args[0].len() - 6].to_string();
 
     let config = load_config(path.to_owned());
 
@@ -50,10 +43,7 @@ async fn main() {
         .and(warp::ws())
         .and(with_clients(clients.clone()))
         .and_then(ws::ws_handler);
-    let routes = ws_route.with(
-        warp::cors()
-        .allow_any_origin()
-    );
+    let routes = ws_route.with(warp::cors().allow_any_origin());
 
     let mut ip = [0; 4];
     for (i, e) in config.ws_ip.to_owned().split(".").enumerate() {
@@ -69,8 +59,10 @@ async fn main() {
 
     let mut line_map = HashMap::new();
 
-    for i in sessions {
-        if i.game.is_none() { return; }
+    for i in &sessions {
+        if i.game.is_none() {
+            return;
+        }
         gen_pipe(i.name.to_owned(), false).await;
         tokio::time::sleep(Duration::from_millis(20)).await;
         line_map.insert(i.name.to_owned(), set_lines(i.name.to_owned()));
@@ -87,9 +79,48 @@ async fn main() {
         tokio::time::sleep(Duration::from_millis(250)).await;
     });
 
+    let mut clock: usize = 0;
+
+    tokio::spawn(async move {
+        for i in &sessions {
+            if i.game.is_none() || i.game.to_owned().unwrap().backup_interval.is_none() {
+                continue;
+            }
+
+            let e = i.game.to_owned().unwrap();
+
+            if e.backup_interval.is_some()
+                && clock % e.backup_interval.unwrap() == 0
+                && clock > e.backup_interval.unwrap()
+            {
+                let keep_time = match e.backup_keep {
+                    Some(t) => t,
+                    None => usize::MAX,
+                };
+
+                if e.file_path.is_none() || e.backup_interval.is_none() {
+                    continue;
+                }
+                //fn backup(args: Option<Vec<String, Global>>, keep_time: usize, backup_dir: String, backup_store: String, btime: usize) -> impl Future<Output = String>
+                let _ = backup(
+                    None,
+                    keep_time,
+                    e.file_path.unwrap(),
+                    config.backup_location.to_owned(),
+                    e.backup_interval.to_owned().unwrap(),
+                );
+            }
+        }
+        clock += 1;
+        tokio::time::sleep(Duration::from_millis(1000)).await;
+    });
+
     print!("manager loaded in: {:#?}, ", startup.elapsed());
-    
-    println!("starting websocket server on {}:{}", config.ws_ip, config.ws_port);
+
+    println!(
+        "starting websocket server on {}:{}",
+        config.ws_ip, config.ws_port
+    );
     warp::serve(routes).run((ip, config.ws_port as u16)).await;
 }
 fn with_clients(clients: Clients) -> impl Filter<Extract = (Clients,), Error = Infallible> + Clone {

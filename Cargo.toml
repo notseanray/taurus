@@ -19,3 +19,4 @@ rcon = { version = "0.6.0", features = ["rt-async-std"] }
 toml = "0.5.3"
 sysinfo = "0.22.3"
 evalexpr = "7.0.0"
+chrono = "0.4.0"

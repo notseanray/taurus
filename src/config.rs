@@ -1,6 +1,6 @@
-use std::fs::File;
-use std::fs;
 use lupus::*;
+use std::fs;
+use std::fs::File;
 
 pub fn load_config(path: String) -> Config {
     if !check_dir(path.to_owned() + "/config.toml") {
@@ -55,7 +55,6 @@ backup_location: ''
 
     fs::write(path.to_owned() + "/config.toml", default)
         .expect("*error: failed to write defaults to config file");
-
 }
 
 pub fn load_sessions(path: String) -> Vec<Session> {
@@ -66,7 +65,8 @@ pub fn load_sessions(path: String) -> Vec<Session> {
     let mut sessions = Vec::new();
 
     for i in fs::read_dir(path.to_owned() + "/servers/")
-        .expect("*error: failed to read server directory") {
+        .expect("*error: failed to read server directory")
+    {
         let data = match fs::read_to_string(i.unwrap().path()) {
             Ok(t) => t,
             Err(_) => continue,
@@ -87,20 +87,20 @@ pub fn load_sessions(path: String) -> Vec<Session> {
 // TODO
 // check if servers.toml will function correctly
 fn template_files(path: String) {
-    let files = [
-        "config.toml", 
-        "servers/servers.toml", 
-        "scripts.toml"
-    ];
+    let files = ["config.toml", "servers/servers.toml", "scripts.toml"];
 
     for i in files {
-        if check_dir(path.to_owned() + "/" + i) { continue; }
+        if check_dir(path.to_owned() + "/" + i) {
+            continue;
+        }
 
         println!("*info: creating file: {}", i);
 
         File::create(path.to_owned() + i).expect("*error: failed to create default files");
 
-        if i != "config.toml" { continue; }
+        if i != "config.toml" {
+            continue;
+        }
 
         default_main_config(path.to_owned());
     }

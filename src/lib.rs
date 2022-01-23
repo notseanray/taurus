@@ -1,14 +1,14 @@
 extern crate libc;
 use libc::{c_int, pid_t};
-use std::{
-    path::PathBuf, 
-    process::Command, 
-    io::{BufRead, BufReader}, 
-    fs::File,
-};
-use regex::Regex;
 use rcon::{AsyncStdStream, Connection};
+use regex::Regex;
 use serde_derive::Deserialize;
+use std::{
+    fs::File,
+    io::{BufRead, BufReader},
+    path::PathBuf,
+    process::Command,
+};
 use sysinfo::{DiskExt, System, SystemExt};
 
 extern "C" {
@@ -27,8 +27,9 @@ pub struct Session {
 #[derive(Deserialize, Debug, Clone)]
 pub struct Game {
     pub file_path: Option<String>,
-    pub backup_keep: Option<u64>,
-    pub in_game_cmd: bool,
+    pub backup_interval: Option<usize>,
+    pub backup_keep: Option<usize>,
+    pub in_game_cmd: Option<bool>,
     pub lines: Option<usize>,
 }
 
@@ -69,7 +70,6 @@ async fn handle_command(server_name: String, cmd: String, arg: String) {
     send_command(server_name.to_owned(), final_cmd).await;
 }
 
-
 // This removes all the formmating codes coming from MC chat with regex
 #[inline(always)]
 fn replace_formatting(mut msg: String) {
@@ -105,10 +105,7 @@ pub fn set_lines(server_name: String) -> usize {
 pub async fn gen_pipe(server_name: String, rm: bool) {
     if rm {
         // get the file path to the pipe file
-        let pipe_old: String = format!(
-            "/tmp/{}-HypnosCore", 
-            &server_name
-        );
+        let pipe_old: String = format!("/tmp/{}-HypnosCore", &server_name);
 
         // remove the old pipe file if it exists
         if check_dir(pipe_old.to_owned()) {
@@ -137,11 +134,7 @@ pub async fn gen_pipe(server_name: String, rm: bool) {
 // multiple lines you can send the command multiple times
 #[inline(always)]
 pub async fn send_command(server_name: String, message: String) {
-    let msg = format!(
-        "{}",
-        &message
-            .replace(|c: char| !c.is_ascii(), "")
-    );
+    let msg = format!("{}", &message.replace(|c: char| !c.is_ascii(), ""));
 
     Command::new("tmux")
         .args(["send-keys", "-t", &server_name, &msg, "Enter"])
@@ -151,7 +144,6 @@ pub async fn send_command(server_name: String, message: String) {
     reap();
 }
 
-
 // update messages from the log file, this takes in the log file, checks if the lines can be
 // ignored, then checks if the new lines are in game commands, if they are then use handle command
 // to check them and if not send them to discord
@@ -159,10 +151,7 @@ pub async fn send_command(server_name: String, message: String) {
 // unfortunately this is not very efficient but honestly I don't really care, this runs on separate
 // threads from the mc server and if the log file gets above 2k lines it gets repiped with tmux to
 // prevent the function from taing too long
-pub async fn update_messages(
-    server_name: String,
-    lines: usize,
-) -> (String, usize) {
+pub async fn update_messages(server_name: String, lines: usize) -> (String, usize) {
     let file_path: String = format!("/tmp/{}-HypnosCore", &server_name);
 
     if !check_dir(file_path.to_owned()) {
@@ -207,11 +196,7 @@ pub async fn update_messages(
             //
             // firstly we put the server name then the new line message, this is where replace
             // formatting comes in to remove the special mc escape sequences
-            let nmessage = format!(
-                "[{}]{}\n",
-                &server_name,
-                newline.to_string()
-            );
+            let nmessage = format!("[{}]{}\n", &server_name, newline.to_string());
 
             message.push_str(&nmessage);
         }
@@ -261,7 +246,7 @@ pub fn collect(server: String, lines: u16) -> String {
     result
 }*/
 
-pub async fn create_rcon_connections(session: Vec<Session>) -> Vec<Connection<AsyncStdStream>>{
+pub async fn create_rcon_connections(session: Vec<Session>) -> Vec<Connection<AsyncStdStream>> {
     let mut connections = Vec::new();
     for i in session {
         if i.rcon.is_none() || Some(i.rcon.to_owned().unwrap().port) != None {
@@ -286,9 +271,7 @@ pub async fn create_rcon_connections(session: Vec<Session>) -> Vec<Connection<As
     connections
 }
 
-pub async fn send_rcon_message() {
-
-}
+pub async fn send_rcon_message() {}
 
 // TODO
 // fix disk usage
@@ -389,5 +372,3 @@ pub fn check_disk(sys: &System) -> (f64, f64, f64) {
         return (used_total - used_biggest, used_total, 0.1);
     }
 }
-
-
