@@ -45,12 +45,12 @@ fn default_main_config(path: String) {
 # or not used
 
 # if no ip or port is used the default is 127.0.0.1:7500
-ws_ip: '127.0.0.1'
-ws_port: 7500
-backup_location: ''
-#scripts_file: ''
-#restart_script: ''
-#recompile_directory: ''
+ws_ip = '127.0.0.1'
+ws_port = 7500
+backup_location = ''
+#scripts_file = ''
+#restart_script = ''
+#recompile_directory = ''
 ";
 
     fs::write(path.to_owned() + "/config.toml", default)

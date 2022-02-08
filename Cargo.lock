@@ -698,6 +698,7 @@ dependencies = [
  "chrono",
  "evalexpr",
  "futures",
+ "lazy_static",
  "libc",
  "rcon",
  "regex",

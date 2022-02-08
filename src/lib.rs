@@ -58,6 +58,7 @@ pub fn reap() {
     }
 }
 
+/*
 // function to handle mc commands send to a tmux session, this has a command "whitelist" to ensure
 // that only certain commands are executed
 async fn handle_command(server_name: String, cmd: String, arg: String) {
@@ -68,15 +69,15 @@ async fn handle_command(server_name: String, cmd: String, arg: String) {
         _ => return,
     }
     send_command(server_name.to_owned(), final_cmd).await;
-}
+}*/
 
 // This removes all the formmating codes coming from MC chat with regex
 #[inline(always)]
-fn replace_formatting(mut msg: String) {
+pub fn replace_formatting(mut msg: String) -> String {
     msg = msg.replace("_", "\\_");
     // regex to replace any '§' followed by digits with a blank space
     let mc_codes = Regex::new(r"§.*\d").unwrap();
-    msg = mc_codes.replace_all(&msg, "").to_owned().to_string();
+    mc_codes.replace_all(&msg, "").to_owned().to_string()
 }
 
 // function to check if the file or folder exist, if it does not exists emit a warning depending if
@@ -216,41 +217,10 @@ pub async fn update_messages(server_name: String, lines: usize) -> (String, usiz
     ("".to_string(), 0)
 }
 
-/*
-pub fn collect(server: String, lines: u16) -> String {
-    let path: String = format!("/tmp/{}-HypnosCore", server);
-
-    if !check_dir(path.to_owned()) {
-        return "".to_string();
-    }
-
-    let (file, fline) = (File::open(&path).unwrap(), File::open(&path).unwrap());
-    let (reader, flines) = (
-        BufReader::new(file).lines(),
-        BufReader::new(fline).lines().count(),
-    );
-
-    if lines as usize > flines {
-        return "INVALID".to_string();
-    }
-
-    let mut result = String::new();
-
-    for (i, line) in reader.enumerate() {
-        if i >= flines - lines as usize {
-            let new_content = format!("{}\n", line.expect("failed to parse line in collect"));
-            result.push_str(&new_content);
-        }
-    }
-
-    result
-}*/
-
-pub async fn create_rcon_connections(session: Vec<Session>) -> Vec<Connection<AsyncStdStream>> {
-    let mut connections = Vec::new();
+pub async fn create_rcon_connections(session: Vec<Session>, msg: String) {
     for i in session {
         if i.rcon.is_none() || Some(i.rcon.to_owned().unwrap().port) != None {
-            return connections;
+            return;
         }
 
         let ip = match i.rcon.to_owned().unwrap().ip {
@@ -260,15 +230,14 @@ pub async fn create_rcon_connections(session: Vec<Session>) -> Vec<Connection<As
 
         let credentials = format!("{}:{}", ip, i.rcon.to_owned().unwrap().port);
 
-        let con = <Connection<AsyncStdStream>>::builder()
+        let mut con = <Connection<AsyncStdStream>>::builder()
             .enable_minecraft_quirks(true)
             .connect(credentials, &i.rcon.to_owned().unwrap().password)
             .await
             .expect("*error: failed to connect to rcon session");
 
-        connections.push(con);
+        let _ = con.cmd(&msg).await;
     }
-    connections
 }
 
 pub async fn send_rcon_message() {}

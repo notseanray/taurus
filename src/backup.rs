@@ -171,15 +171,14 @@ Last Backup: {}s ago, Next Backup in: {}s```",
 
         return "*error: expected additional argument".to_string();
     }
+    // remove any zombie processes that were created during the process
+    reap();
 
     return new(
         backup_store.to_owned(),
         backup_dir.to_owned(),
         keep_time.try_into().unwrap(),
     );
-
-    // remove any zombie processes that were created during the process
-    reap();
 }
 
 // big function to handle all the backup processes

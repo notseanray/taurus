@@ -24,17 +24,20 @@ use ws::WsClient;
 type Clients = Arc<Mutex<HashMap<String, WsClient>>>;
 type Result<T> = std::result::Result<T, Rejection>;
 
+
+lazy_static::lazy_static! {
+    static ref ARGS: Vec<String> = env::args().collect();
+    static ref PATH: String = ARGS[0].to_owned()[..ARGS[0].len() - 6].to_string();
+    static ref SESSIONS: Vec<Session> = load_sessions(PATH.to_owned());
+}
+
 #[tokio::main(flavor = "multi_thread", worker_threads = 8)]
 async fn main() {
     let startup = Instant::now();
 
-    let args: Vec<String> = env::args().collect();
-
-    let path = args[0].to_owned()[..args[0].len() - 6].to_string();
+    let path = ARGS[0].to_owned()[..ARGS[0].len() - 6].to_string();
 
     let config = load_config(path.to_owned());
-
-    let sessions: Vec<Session> = load_sessions(path.to_owned());
 
     //env::set_var("LUPUS_SESSIONS", sessions.clone());
 
@@ -59,9 +62,10 @@ async fn main() {
 
     let mut line_map = HashMap::new();
 
-    for i in &sessions {
+    for i in &SESSIONS.to_owned() {
         if i.game.is_none() {
-            return;
+            println!("no game sessions detected in config... continuing");
+            continue;
         }
         gen_pipe(i.name.to_owned(), false).await;
         tokio::time::sleep(Duration::from_millis(20)).await;
@@ -82,7 +86,7 @@ async fn main() {
     let mut clock: usize = 0;
 
     tokio::spawn(async move {
-        for i in &sessions {
+        for i in &SESSIONS.to_owned() {
             if i.game.is_none() || i.game.to_owned().unwrap().backup_interval.is_none() {
                 continue;
             }
@@ -126,3 +130,4 @@ async fn main() {
 fn with_clients(clients: Clients) -> impl Filter<Extract = (Clients,), Error = Infallible> + Clone {
     warp::any().map(move || clients.clone())
 }
+
