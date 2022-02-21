@@ -14,7 +14,7 @@ pub async fn backup(
 ) -> String {
     // if either the directory we are attempting to backup, or the resulting location does not
     // exists then we can just return
-    if !check_dir(backup_dir.to_owned()) || !check_dir(backup_store.to_owned()) {
+    if !check_exist(&backup_dir.to_owned()) || !check_exist(&backup_store.to_owned()) {
         eprintln!(
             "*error: please check your config! either backup directory or backup store is invalid!"
         );
@@ -119,10 +119,10 @@ Last Backup: {}s ago, Next Backup in: {}s```",
             }
 
             // find the absolute path of the file that we need to delete
-            let path = format!("{}/HypnosCore-{}", backup_store, args[index + 1]);
+            let path = format!("{}/lupus-{}", backup_store, args[index + 1]);
 
             // check if it exists, if it doesn't then we must say that otherwise we can continue
-            if !check_dir(path.to_owned()) {
+            if !check_exist(&path.to_owned()) {
                 return "*error: location does not exist on file system".to_string();
             }
 
@@ -148,7 +148,7 @@ Last Backup: {}s ago, Next Backup in: {}s```",
         // file system to handle, sometimes the lock will remain there though and we will have to
         // manually clear it
         if args.to_owned().contains(&"unlock".to_owned()) {
-            if !check_dir("/tmp/HypnosCore-Backup.lock".to_string()) {
+            if !check_exist("/tmp/HypnosCore-Backup.lock") {
                 return "lock file does not exist".to_string();
             }
 
@@ -159,7 +159,7 @@ Last Backup: {}s ago, Next Backup in: {}s```",
         }
 
         if args.to_owned().contains(&"lock".to_owned()) {
-            if check_dir("/tmp/HypnosCore-Backup.lock".to_string()) {
+            if check_exist("/tmp/lupus-backup.lock") {
                 return "lock file already exist".to_string();
             }
 
@@ -202,7 +202,7 @@ fn new(backup_store: String, backup_dir: String, keep_time: u64) -> String {
     }
 
     // if the lock file exists then something could be wrong, we will skip if this happens
-    if check_dir("/tmp/HypnosCore-Backup.lock".to_string()) {
+    if check_exist("/tmp/HypnosCore-Backup.lock") {
         eprintln!("*warn: backup lock file exists! skipping backup");
         return "Lock file exists, skipping backup".to_string();
     }
@@ -216,7 +216,7 @@ fn new(backup_store: String, backup_dir: String, keep_time: u64) -> String {
     let root_res = format!("{}/root_copy/", &backup_store);
 
     // if the folder doesn't exists for the root copy, create it
-    if !check_dir(root_res.to_owned()) {
+    if !check_exist(&root_res.to_owned()) {
         println!("*warn: failed to find root copy directory, creating it instead");
         fs::create_dir_all(root_res.to_owned()).expect("*error: failed to create root_cpy dir");
     }

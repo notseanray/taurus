@@ -1,13 +1,7 @@
-// simple log
-//
-// backup loop
-// read chat
-// docker & tmux support - map to store settings
-// script system, different timing per a script from scripts.cfg
-
 use std::{collections::HashMap, convert::Infallible, env, sync::Arc};
 use tokio::sync::Mutex;
-use warp::{Filter, Rejection};
+use warp::Filter;
+use bridge::*;
 
 mod args;
 mod backup;
@@ -15,20 +9,14 @@ mod bridge;
 mod config;
 mod ws;
 use backup::backup;
-use bridge::send_chat;
 use config::*;
 use lupus::*;
 use std::time::{Duration, Instant};
-use ws::WsClient;
-
-type Clients = Arc<Mutex<HashMap<String, WsClient>>>;
-type Result<T> = std::result::Result<T, Rejection>;
-
 
 lazy_static::lazy_static! {
     static ref ARGS: Vec<String> = env::args().collect();
     static ref PATH: String = ARGS[0].to_owned()[..ARGS[0].len() - 6].to_string();
-    static ref SESSIONS: Vec<Session> = load_sessions(PATH.to_owned());
+    static ref SESSIONS: Vec<Session> = Config::load_sessions(PATH.to_owned());
 }
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 8)]
@@ -37,7 +25,7 @@ async fn main() {
 
     let path = ARGS[0].to_owned()[..ARGS[0].len() - 6].to_string();
 
-    let config = load_config(path.to_owned());
+    let config = Config::load_config(path.to_owned());
 
     //env::set_var("LUPUS_SESSIONS", sessions.clone());
 
@@ -74,18 +62,19 @@ async fn main() {
 
     tokio::spawn(async move {
         let mut response = Vec::new();
-        for (key, mut value) in line_map.iter_mut() {
-            let (msg, mut line_count) = update_messages(key.to_owned(), *value).await;
-            value = &mut line_count;
+        for (key, value) in line_map.iter() {
+            let (msg, line_count) = update_messages(key.to_owned(), *value).await;
+            line_map.to_owned().entry(key.clone().into()).and_modify(|x| *x = line_count);
             response.push(msg);
         }
-        send_chat(&clients, response.join("\n")).await;
+        send_to_discord(&clients, format!("MSG {}", response.join("\n"))).await;
         tokio::time::sleep(Duration::from_millis(250)).await;
     });
 
     let mut clock: usize = 0;
 
     tokio::spawn(async move {
+        clock += 1;
         for i in &SESSIONS.to_owned() {
             if i.game.is_none() || i.game.to_owned().unwrap().backup_interval.is_none() {
                 continue;
@@ -105,7 +94,6 @@ async fn main() {
                 if e.file_path.is_none() || e.backup_interval.is_none() {
                     continue;
                 }
-                //fn backup(args: Option<Vec<String, Global>>, keep_time: usize, backup_dir: String, backup_store: String, btime: usize) -> impl Future<Output = String>
                 let _ = backup(
                     None,
                     keep_time,
@@ -115,7 +103,6 @@ async fn main() {
                 );
             }
         }
-        clock += 1;
         tokio::time::sleep(Duration::from_millis(1000)).await;
     });
 

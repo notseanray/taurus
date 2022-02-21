@@ -1,4 +1,4 @@
-use super::config::load_config;
+use crate::Config;
 
 pub fn parse_args(args: Vec<String>) {
     if args.len() < 1 {
@@ -8,7 +8,7 @@ pub fn parse_args(args: Vec<String>) {
     for i in parseable {
         match i.as_str() {
             "check" => {
-                load_config(args[0].to_owned()[..args.len() - 6].to_string());
+                Config::load_config(args[0].to_owned()[..args.len() - 6].to_string());
             }
             _ => {
                 eprintln!("*warn: invalid argument -> {}", i);
