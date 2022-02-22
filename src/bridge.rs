@@ -1,28 +1,9 @@
-use regex::Regex;
-use std::io::{BufReader, BufRead};
-use std::process::Command;
-use std::fs::File;
-use lupus::*;
+use crate::*;
 use rcon_rs::{Client, PacketType};
-use warp::ws::Message;
-
-pub async fn send_to_discord(clients: &Clients, msg: String) {
-    let locked = clients.lock().await;
-    for (key, _) in locked.iter() {
-        match locked.get(key) {
-            Some(t) => {
-                if let Some(t) = &t.sender {
-                    let _ = t.send(
-                        Ok(Message::text(
-                                "CHAT_OUT ".to_owned() + 
-                                &replace_formatting(
-                                    msg.to_owned()))));
-                }
-            }
-            None => continue,
-        };
-    }
-}
+use regex::Regex;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use std::process::Command;
 
 // update messages from the log file, this takes in the log file, checks if the lines can be
 // ignored, then checks if the new lines are in game commands, if they are then use handle command
@@ -31,9 +12,14 @@ pub async fn send_to_discord(clients: &Clients, msg: String) {
 // unfortunately this is not very efficient but honestly I don't really care, this runs on separate
 // threads from the mc server and if the log file gets above 2k lines it gets repiped with tmux to
 // prevent the function from taing too long
-pub async fn update_messages(server_name: String, lines: usize) -> (String, usize) {
+pub async fn update_messages<T>(server_name: T, lines: usize) -> (String, usize) 
+    where T: ToString
+{
+    let server_name = server_name.to_string();
     let file_path: String = format!("/tmp/{server_name}-lupus");
-    if !check_exist(&file_path.to_owned()) { return ("".to_string(), 0); }
+    if !check_exist(&file_path.to_owned()) {
+        return ("".to_string(), 0);
+    }
 
     // open the log file in bufreader
     let file = File::open(&file_path).unwrap();
@@ -56,9 +42,7 @@ pub async fn update_messages(server_name: String, lines: usize) -> (String, usiz
 
             // check if the message starts with certain characters
             let line_sep: &str = &line[33..];
-            if !line.starts_with("[") || 
-                (!line_sep.starts_with("<") && !line_sep.starts_with("§"))
-            {
+            if !line.starts_with("[") || (!line_sep.starts_with("<") && !line_sep.starts_with("§")) {
                 continue;
             }
 
@@ -70,7 +54,7 @@ pub async fn update_messages(server_name: String, lines: usize) -> (String, usiz
             //
             // firstly we put the server name then the new line message, this is where replace
             // formatting comes in to remove the special mc escape sequences
-            let nmessage = format!("[{server_name}]{newline}\n");
+            let nmessage = format!("[{server_name}] {newline}\n");
 
             message.push_str(&nmessage);
         }
@@ -78,9 +62,7 @@ pub async fn update_messages(server_name: String, lines: usize) -> (String, usiz
 
     // if the lines are under 2k, we don't need to replace the file since it doesn't take much time
     // to process in the first place
-    if lines < 2000 {
-        return (message, cur_line);
-    }
+    if lines < 2000 { return (message, cur_line); }
 
     // if it is above 2k however, we can reset the pipe and notify the to the console
     gen_pipe(server_name.to_owned(), true).await;
@@ -92,21 +74,25 @@ pub async fn update_messages(server_name: String, lines: usize) -> (String, usiz
 
 // checks the number of lines in the log file to set them initially, this prevents old messages
 // from being spat out if the bot restarts (and makes it a lot less annoying)
-pub fn set_lines(server_name: String) -> usize {
-    let file_path: String = format!("/tmp/{}-HypnosCore", &server_name);
-    let file = File::open(&file_path).unwrap();
+pub fn set_lines<T>(server_name: T) -> usize 
+    where T: ToString
+{
+    let server_name = server_name.to_string();
+    let file = File::open(&format!("/tmp/{server_name}-lupus")).unwrap();
     let reader = BufReader::new(file);
 
     // count the amount of lines in the log file
     reader.lines().count()
 }
 
-
-pub async fn create_rcon_connections(session: Vec<Session>, msg: String) -> Result<()> {
+pub async fn create_rcon_connections<T>(session: Vec<Session>, msg: T) -> Result<()> 
+    where T: ToString 
+{
+    let msg = msg.to_string();
     for i in session {
         let rcon = match i.rcon {
             Some(v) => v,
-            None => continue 
+            None => continue,
         };
 
         let ip = match rcon.to_owned().ip {
@@ -115,7 +101,13 @@ pub async fn create_rcon_connections(session: Vec<Session>, msg: String) -> Resu
         };
 
         let mut conn = Client::new(&ip, &rcon.to_owned().port.to_string());
-        let _ = conn.auth(&rcon.password);
+        let auth = conn.auth(&rcon.password);
+        match auth {
+            Ok(_) => {},
+            Err(e) => {
+                eprintln!("*warn: \x1b[33mrcon failure: {:#?}\x1b[0m", e);
+            }
+        }
 
         let _ = conn.send(&msg, Some(PacketType::Cmd));
     }
@@ -137,10 +129,15 @@ pub fn replace_formatting(mut msg: String) -> String {
 // this is one of the limitations of this system, but it's not that bad because if there are
 // multiple lines you can send the command multiple times
 #[inline(always)]
-pub async fn send_command(server_name: String, message: String) {
+pub async fn send_command<T>(server_name: T, message: T) 
+    where T: ToString
+{
+    let (message, server_name) = (message.to_string(), server_name.to_string());
     // if there are any non ascii characters then we can return as there's likely problems with the
     // rest of the command
-    message.chars().for_each(|c| if !c.is_ascii() { return; });
+    message.chars().for_each(|c| {
+        if !c.is_ascii() { return; }
+    });
 
     Command::new("tmux")
         .args(["send-keys", "-t", &server_name, &message, "Enter"])
@@ -150,20 +147,22 @@ pub async fn send_command(server_name: String, message: String) {
     reap();
 }
 
-
 // generate the tmux pipe connecting to the specified server, this also takes in the option to
 // delete the file if it exists before generating it
 // that can be used at startup or when just resetting the file in general
 #[inline]
-pub async fn gen_pipe(server_name: String, rm: bool) {
-    let pipe = format!("/tmp/{}-lupus", &server_name);
+pub async fn gen_pipe<T>(server_name: T, rm: bool) 
+    where T: ToString
+{
+    let server_name = server_name.to_string();
+    let pipe = format!("/tmp/{server_name}-lupus");
     if rm {
         // remove the old pipe file if it exists
         if check_exist(&pipe) {
             Command::new("rm")
                 .arg(&pipe)
                 .spawn()
-                .expect("*error: failed to delete pipe file");
+                .expect("*error: \x1b[31mfailed to delete pipe file\x1b[0m");
         }
     }
 
@@ -171,10 +170,8 @@ pub async fn gen_pipe(server_name: String, rm: bool) {
     Command::new("tmux")
         .args(["pipe-pane", "-t", &server_name, &format!("cat > {pipe}")])
         .spawn()
-        .expect("*error: failed to generate pipe file");
+        .expect("*error: \x1b[31mfailed to generate pipe file\x1b[0m");
 
     // call reap to remove any zombie processes generated by it
     reap();
 }
-
-

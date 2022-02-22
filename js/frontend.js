@@ -5,7 +5,10 @@ const connection = new WebSocket(url)
 console.log("sending", "ping")
 
 connection.onopen = () => {
-	connection.send("h") 
+	connection.send("PING") 
+	connection.send("PING") 
+	connection.send("PING") 
+	connection.send("PING") 
 }
 
 connection.onerror = (error) => {

@@ -1,16 +1,11 @@
-extern crate libc;
 use libc::{c_int, pid_t};
-use serde_derive::Deserialize;
-use std::{
-    path::PathBuf,
-    process::Command,
-};
-use warp::ws::Message;
-use sysinfo::{DiskExt, System, SystemExt};
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
-use warp::Rejection;
+use std::{path::PathBuf, process::Command};
+use sysinfo::{DiskExt, System, SystemExt};
 use tokio::sync::mpsc;
+use tokio::sync::Mutex;
+use warp::ws::Message;
+use warp::Rejection;
 
 pub type Clients = Arc<Mutex<HashMap<String, WsClient>>>;
 pub type Result<T> = std::result::Result<T, Rejection>;
@@ -25,31 +20,6 @@ extern "C" {
     pub fn waitpid(pid: pid_t, stat_loc: *mut c_int, options: c_int) -> pid_t;
 }
 
-#[derive(Deserialize, Debug, Clone)]
-pub struct Session {
-    pub name: String,
-    pub description: String,
-    pub host: String,
-    pub game: Option<Game>,
-    pub rcon: Option<Rcon>,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct Game {
-    pub file_path: Option<String>,
-    pub backup_interval: Option<usize>,
-    pub backup_keep: Option<usize>,
-    pub in_game_cmd: Option<bool>,
-    pub lines: Option<usize>,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct Rcon {
-    pub ip: Option<String>,
-    pub port: u64,
-    pub password: String,
-}
-
 // std::Command can leave behind zombie processes that buid up over time, this small function uses
 #[inline]
 pub fn reap() {
@@ -61,24 +31,22 @@ pub fn reap() {
 // function to check if the file or folder exist, if it does not exists emit a warning depending if
 // the warning should be silenced or not
 #[inline]
-pub fn check_exist(dir: &str) -> bool {
-    let current_path = PathBuf::from(dir);
+pub fn check_exist<T>(dir: T) -> bool 
+    where T: ToString
+{
+    let current_path = PathBuf::from(dir.to_string());
     return current_path.exists();
 }
 
-pub async fn send_to_clients(clients: &Clients, msg: String) {
+pub async fn send_to_clients<T>(clients: &Clients, msg: T) 
+    where T: ToString
+{
     let locked = clients.lock().await;
     for (key, _) in locked.iter() {
         match locked.get(key) {
             Some(t) => {
                 if let Some(t) = &t.sender {
-                    let _ = t.send(
-                        Ok(Message::text(
-                            "CHAT_OUT ".to_owned() + 
-                            &msg.to_owned()
-                            )
-                            )
-                        );
+                    let _ = t.send(Ok(Message::text(msg.to_string().clone())));
                 }
             }
             None => continue,
@@ -92,10 +60,15 @@ pub async fn send_to_clients(clients: &Clients, msg: String) {
 // this is one of the limitations of this system, but it's not that bad because if there are
 // multiple lines you can send the command multiple times
 #[inline(always)]
-pub async fn send_command(server_name: String, message: String) {
+pub async fn send_command<T>(server_name: T, message: T) 
+    where T: ToString 
+{
+    let (server_name, message) = (server_name.to_string(), message.to_string());
     // if there are any non ascii characters then we can return as there's likely problems with the
     // rest of the command
-    message.chars().for_each(|c| if !c.is_ascii() { return; });
+    message.chars().for_each(|c| {
+        if !c.is_ascii() { return; }
+    });
 
     Command::new("tmux")
         .args(["send-keys", "-t", &server_name, &message, "Enter"])
@@ -104,10 +77,11 @@ pub async fn send_command(server_name: String, message: String) {
 
     reap();
 }
+
+/*
 // TODO
 // fix disk usage
 //
-
 pub async fn sys_check(dis: bool, chat_id: u64) {
     let (mut sys, mut warn) = (System::new_all(), false);
     sys.refresh_all();
@@ -165,41 +139,63 @@ pub async fn sys_check(dis: bool, chat_id: u64) {
 
     response.push_str(&uptime);
 }
+*/
 
-// check the disk space avaible on the server, overfilling a drive is never a good thing and having
-// this automatically be checked every few minutes is quite nice
-//
-// the function returns the index of the drive if there is one in trouble, this can help quickly sort
-// things out through df -h if needed
-pub fn check_disk(sys: &System) -> (f64, f64, f64) {
-    let (mut used_biggest, mut used_total) = (0.0, 0.0);
-    let (mut warn_i, mut cur_i) = (0, 0);
-    let mut warn: bool = false;
+pub fn sys_check() -> String {
+    let mut response = String::new();
+    let mut sys = System::new_all();
+    sys.refresh_all();
+
+    let disk = check_disk(&sys);
+
+    if disk.is_some() {
+        response.push_str(
+            &format!("\\*warn: disk space low on drive index: {}", disk.unwrap())
+        );
+    }
+
+    response.push_str("disks: ");
+    for i in disk_info(&sys) {
+        response.push_str(&format!("{} MiB / {} MiB {}%", make_mb(i.0), make_mb(i.1), i.2));
+    }
+
+    response
+}
+
+pub fn sys_health_check() -> bool {
+    let mut sys = System::new_all();
+    sys.refresh_all();
+    let (used, total) = get_ram(&sys);
+    if used as f64 / total as f64 > 0.85 { return true; }
+
+    false
+} 
+
+fn get_ram(sys: &System) -> (u64, u64) {
+    (sys.used_memory(), sys.total_memory())
+}
+
+fn make_mb(num: u64) -> u64 {
+    (num as f32 / 1073.7) as u64
+}
+
+fn check_disk(sys: &System) -> Option<u8> {
+    for (i, disk) in sys.disks().iter().enumerate() {
+        if disk.total_space() < 10737418240 { continue; }
+        if disk.available_space() as f32 / disk.total_space() as f32 > 0.1 {
+            return Some(i as u8);
+        }
+    } 
+    None
+}
+
+fn disk_info(sys: &System) -> Vec<(u64, u64, f32)> {
+    let mut response: Vec<(u64, u64, f32)> = Vec::new();
     for disk in sys.disks() {
-        // check if the disk space is over 10 gig total, if it is smaller it could be a ramfs or
-        // temp partition that we can ignore
-        if disk.total_space() < 10737418240 {
-            continue;
-        }
-
-        let total_space = disk.total_space() as f64;
-
-        if total_space > used_total {
-            used_total = total_space;
-            used_biggest = disk.available_space() as f64;
-        }
-
-        if ((used_total - used_biggest) / disk.total_space() as f64) > 0.9 {
-            warn = true;
-            warn_i = cur_i;
-            println!("*warn: drive space low on drive index: {}", warn_i);
-        }
-
-        cur_i += 1;
+        let total = disk.total_space();
+        if total < 10737418240 || disk.is_removable() { continue; }
+        let used = total - disk.available_space();
+        response.push((used, total, (used as f64 / total as f64) as f32));
     }
-    if warn {
-        return (used_total - used_biggest, used_total, warn_i as f64);
-    } else {
-        return (used_total - used_biggest, used_total, 0.1);
-    }
+    response
 }

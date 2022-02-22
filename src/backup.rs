@@ -190,16 +190,7 @@ fn new(backup_store: String, backup_dir: String, keep_time: u64) -> String {
     sys.refresh_disks();
 
     // check the disk to ensure that a backup is safe
-    let (u, t, i) = check_disk(&sys);
-
-    // if there is an issue then we can just skip and continue
-    if (i as u16 * 100) == 10 {
-        eprintln!(
-            "*error: backup skipped due to low disk space on index: {}",
-            i
-        );
-        return "Disk space is low! Skipping backup".to_string();
-    }
+    if sys_health_check() { return "unmet system constraints".to_string() }
 
     // if the lock file exists then something could be wrong, we will skip if this happens
     if check_exist("/tmp/HypnosCore-Backup.lock") {
@@ -255,11 +246,6 @@ fn new(backup_store: String, backup_dir: String, keep_time: u64) -> String {
     // if it was a success, we can remove copies older than the specified time, otherwise we can
     // continue
     if backupcmd.success() {
-        println!(
-            "*info: creating new backup: {}, storage space usage: {:.2}%",
-            backup_name,
-            (u / t) * 100.0
-        );
         println!(
             "*info: finished creating backup in time: {:#?}",
             btime.elapsed()

@@ -1,7 +1,7 @@
+use bridge::*;
 use std::{collections::HashMap, convert::Infallible, env, sync::Arc};
 use tokio::sync::Mutex;
 use warp::Filter;
-use bridge::*;
 
 mod args;
 mod backup;
@@ -12,6 +12,8 @@ use backup::backup;
 use config::*;
 use lupus::*;
 use std::time::{Duration, Instant};
+
+use crate::args::parse_args;
 
 lazy_static::lazy_static! {
     static ref ARGS: Vec<String> = env::args().collect();
@@ -27,7 +29,9 @@ async fn main() {
 
     let config = Config::load_config(path.to_owned());
 
-    //env::set_var("LUPUS_SESSIONS", sessions.clone());
+    if ARGS.len() > 1 { parse_args(ARGS.to_vec()); }
+
+    env::set_var("LUPUS_SESSIONS", SESSIONS.len().to_string());
 
     let clients: Clients = Arc::new(Mutex::new(HashMap::new()));
     let ws_route = warp::path("lupus")
@@ -41,9 +45,8 @@ async fn main() {
         ip[i] = match e.parse::<u8>() {
             Ok(t) => t,
             Err(e) => {
-                eprintln!("*error: {}", e);
-                eprintln!("*error: invalid ip in config file! exiting");
-                std::process::exit(1);
+                eprintln!("*error: \x1b[31m{}", e);
+                panic!("*error: invalid ip in config file! exiting\x1b[0m");
             }
         }
     }
@@ -52,7 +55,7 @@ async fn main() {
 
     for i in &SESSIONS.to_owned() {
         if i.game.is_none() {
-            println!("no game sessions detected in config... continuing");
+            println!("*warn: \x1b[33mno game sessions detected in {}.json, continuing anyway\x1b[0m", i.name);
             continue;
         }
         gen_pipe(i.name.to_owned(), false).await;
@@ -64,10 +67,14 @@ async fn main() {
         let mut response = Vec::new();
         for (key, value) in line_map.iter() {
             let (msg, line_count) = update_messages(key.to_owned(), *value).await;
-            line_map.to_owned().entry(key.clone().into()).and_modify(|x| *x = line_count);
+            line_map
+                .to_owned()
+                .entry(key.clone().into())
+                .and_modify(|x| *x = line_count);
             response.push(msg);
         }
-        send_to_discord(&clients, format!("MSG {}", response.join("\n"))).await;
+        let msg = replace_formatting(response.join("\n"));
+        send_to_clients(&clients.clone(), &format!("MSG {}", msg)).await;
         tokio::time::sleep(Duration::from_millis(250)).await;
     });
 
@@ -90,10 +97,7 @@ async fn main() {
                     Some(t) => t,
                     None => usize::MAX,
                 };
-
-                if e.file_path.is_none() || e.backup_interval.is_none() {
-                    continue;
-                }
+                if e.file_path.is_none() || e.backup_interval.is_none() { continue; }
                 let _ = backup(
                     None,
                     keep_time,
@@ -106,10 +110,10 @@ async fn main() {
         tokio::time::sleep(Duration::from_millis(1000)).await;
     });
 
-    print!("manager loaded in: {:#?}, ", startup.elapsed());
+    print!("*info: \x1b[32mmanager loaded in: {:#?}, ", startup.elapsed());
 
     println!(
-        "starting websocket server on {}:{}",
+        "starting websocket server on {}:{}\x1b[0m",
         config.ws_ip, config.ws_port
     );
     warp::serve(routes).run((ip, config.ws_port as u16)).await;
@@ -117,4 +121,3 @@ async fn main() {
 fn with_clients(clients: Clients) -> impl Filter<Extract = (Clients,), Error = Infallible> + Clone {
     warp::any().map(move || clients.clone())
 }
-

@@ -1,3 +1,4 @@
 #!/bin/bash
-cargo build
-cp ../target/debug/lupus . && ./lupus
+rm lupus
+cargo build 
+cp ../target/debug/lupus . && ./lupus $1
