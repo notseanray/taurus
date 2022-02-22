@@ -1,5 +1,5 @@
+use crate::*;
 use chrono::prelude::*;
-use lupus::*;
 use std::fs;
 use std::process::Command;
 use std::time::SystemTime;
@@ -190,7 +190,9 @@ fn new(backup_store: String, backup_dir: String, keep_time: u64) -> String {
     sys.refresh_disks();
 
     // check the disk to ensure that a backup is safe
-    if sys_health_check() { return "unmet system constraints".to_string() }
+    if sys_health_check() {
+        return "unmet system constraints".to_string();
+    }
 
     // if the lock file exists then something could be wrong, we will skip if this happens
     if check_exist("/tmp/HypnosCore-Backup.lock") {

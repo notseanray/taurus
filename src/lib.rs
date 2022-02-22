@@ -1,6 +1,6 @@
 use libc::{c_int, pid_t};
+use std::path::PathBuf;
 use std::{collections::HashMap, sync::Arc};
-use std::{path::PathBuf, process::Command};
 use sysinfo::{DiskExt, System, SystemExt};
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
@@ -16,11 +16,18 @@ pub struct WsClient {
     pub sender: Option<mpsc::UnboundedSender<std::result::Result<Message, warp::Error>>>,
 }
 
+#[macro_export]
+macro_rules! exit {
+    () => {
+        std::process::exit(0);
+    };
+}
+
 extern "C" {
     pub fn waitpid(pid: pid_t, stat_loc: *mut c_int, options: c_int) -> pid_t;
 }
 
-// std::Command can leave behind zombie processes that buid up over time, this small function uses
+// std::Command can leave behind zombie processes that buid up over time
 #[inline]
 pub fn reap() {
     unsafe {
@@ -28,18 +35,19 @@ pub fn reap() {
     }
 }
 
-// function to check if the file or folder exist, if it does not exists emit a warning depending if
-// the warning should be silenced or not
+// function to check if the file or folder exist
 #[inline]
-pub fn check_exist<T>(dir: T) -> bool 
-    where T: ToString
+pub fn check_exist<T>(dir: T) -> bool
+where
+    T: ToString,
 {
     let current_path = PathBuf::from(dir.to_string());
     return current_path.exists();
 }
 
-pub async fn send_to_clients<T>(clients: &Clients, msg: T) 
-    where T: ToString
+pub async fn send_to_clients<T>(clients: &Clients, msg: T)
+where
+    T: ToString,
 {
     let locked = clients.lock().await;
     for (key, _) in locked.iter() {
@@ -52,30 +60,6 @@ pub async fn send_to_clients<T>(clients: &Clients, msg: T)
             None => continue,
         };
     }
-}
-
-// small function to send a command to the specific tmux session, this replaces new lines due to it
-// causing a problem with commands
-//
-// this is one of the limitations of this system, but it's not that bad because if there are
-// multiple lines you can send the command multiple times
-#[inline(always)]
-pub async fn send_command<T>(server_name: T, message: T) 
-    where T: ToString 
-{
-    let (server_name, message) = (server_name.to_string(), message.to_string());
-    // if there are any non ascii characters then we can return as there's likely problems with the
-    // rest of the command
-    message.chars().for_each(|c| {
-        if !c.is_ascii() { return; }
-    });
-
-    Command::new("tmux")
-        .args(["send-keys", "-t", &server_name, &message, "Enter"])
-        .spawn()
-        .expect("*error: failed to send to tmux session");
-
-    reap();
 }
 
 /*
@@ -149,14 +133,20 @@ pub fn sys_check() -> String {
     let disk = check_disk(&sys);
 
     if disk.is_some() {
-        response.push_str(
-            &format!("\\*warn: disk space low on drive index: {}", disk.unwrap())
-        );
+        response.push_str(&format!(
+            "\\*warn: disk space low on drive index: {}",
+            disk.unwrap()
+        ));
     }
 
     response.push_str("disks: ");
     for i in disk_info(&sys) {
-        response.push_str(&format!("{} MiB / {} MiB {}%", make_mb(i.0), make_mb(i.1), i.2));
+        response.push_str(&format!(
+            "{} MiB / {} MiB {}%",
+            make_mb(i.0),
+            make_mb(i.1),
+            i.2
+        ));
     }
 
     response
@@ -166,10 +156,12 @@ pub fn sys_health_check() -> bool {
     let mut sys = System::new_all();
     sys.refresh_all();
     let (used, total) = get_ram(&sys);
-    if used as f64 / total as f64 > 0.85 { return true; }
+    if used as f64 / total as f64 > 0.85 {
+        return true;
+    }
 
     false
-} 
+}
 
 fn get_ram(sys: &System) -> (u64, u64) {
     (sys.used_memory(), sys.total_memory())
@@ -181,11 +173,13 @@ fn make_mb(num: u64) -> u64 {
 
 fn check_disk(sys: &System) -> Option<u8> {
     for (i, disk) in sys.disks().iter().enumerate() {
-        if disk.total_space() < 10737418240 { continue; }
+        if disk.total_space() < 10737418240 {
+            continue;
+        }
         if disk.available_space() as f32 / disk.total_space() as f32 > 0.1 {
             return Some(i as u8);
         }
-    } 
+    }
     None
 }
 
@@ -193,7 +187,9 @@ fn disk_info(sys: &System) -> Vec<(u64, u64, f32)> {
     let mut response: Vec<(u64, u64, f32)> = Vec::new();
     for disk in sys.disks() {
         let total = disk.total_space();
-        if total < 10737418240 || disk.is_removable() { continue; }
+        if total < 10737418240 || disk.is_removable() {
+            continue;
+        }
         let used = total - disk.available_space();
         response.push((used, total, (used as f64 / total as f64) as f32));
     }

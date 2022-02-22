@@ -10,8 +10,8 @@ mod config;
 mod ws;
 use backup::backup;
 use config::*;
-use lupus::*;
 use std::time::{Duration, Instant};
+use taurus::*;
 
 use crate::args::parse_args;
 
@@ -29,12 +29,14 @@ async fn main() {
 
     let config = Config::load_config(path.to_owned());
 
-    if ARGS.len() > 1 { parse_args(ARGS.to_vec()); }
+    if ARGS.len() > 1 {
+        parse_args(ARGS.to_vec());
+    }
 
     env::set_var("LUPUS_SESSIONS", SESSIONS.len().to_string());
 
     let clients: Clients = Arc::new(Mutex::new(HashMap::new()));
-    let ws_route = warp::path("lupus")
+    let ws_route = warp::path("taurus")
         .and(warp::ws())
         .and(with_clients(clients.clone()))
         .and_then(ws::ws_handler);
@@ -55,7 +57,10 @@ async fn main() {
 
     for i in &SESSIONS.to_owned() {
         if i.game.is_none() {
-            println!("*warn: \x1b[33mno game sessions detected in {}.json, continuing anyway\x1b[0m", i.name);
+            println!(
+                "*warn: \x1b[33mno game sessions detected in {}.json, continuing anyway\x1b[0m",
+                i.name
+            );
             continue;
         }
         gen_pipe(i.name.to_owned(), false).await;
@@ -67,6 +72,10 @@ async fn main() {
         let mut response = Vec::new();
         for (key, value) in line_map.iter() {
             let (msg, line_count) = update_messages(key.to_owned(), *value).await;
+            if msg.is_none() {
+                continue;
+            }
+            let msg = msg.unwrap();
             line_map
                 .to_owned()
                 .entry(key.clone().into())
@@ -97,7 +106,9 @@ async fn main() {
                     Some(t) => t,
                     None => usize::MAX,
                 };
-                if e.file_path.is_none() || e.backup_interval.is_none() { continue; }
+                if e.file_path.is_none() || e.backup_interval.is_none() {
+                    continue;
+                }
                 let _ = backup(
                     None,
                     keep_time,
@@ -110,7 +121,10 @@ async fn main() {
         tokio::time::sleep(Duration::from_millis(1000)).await;
     });
 
-    print!("*info: \x1b[32mmanager loaded in: {:#?}, ", startup.elapsed());
+    print!(
+        "*info: \x1b[32mmanager loaded in: {:#?}, ",
+        startup.elapsed()
+    );
 
     println!(
         "starting websocket server on {}:{}\x1b[0m",

@@ -1,8 +1,8 @@
-use lupus::*;
+use crate::*;
 use serde_derive::Deserialize;
+use serde_json::from_str;
 use std::fs;
 use std::fs::File;
-use serde_json::from_str;
 
 #[derive(Deserialize)]
 pub struct Config {
@@ -20,7 +20,7 @@ pub struct Script {
     pub interval: u64,
     pub absolute: u64,
     pub shell_cmd: String,
-    pub mc_cmd: String
+    pub mc_cmd: String,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -64,8 +64,10 @@ impl Config {
                 eprintln!("*info: generating default config");
                 Config::default_root_cfg(path.to_owned());
                 if !check_exist(config_path) {
-                    eprintln!("*fatal: \x1b[31mcould not read just generated config, exiting\x1b[0m");
-                    std::process::exit(1);
+                    eprintln!(
+                        "*fatal: \x1b[31mcould not read just generated config, exiting\x1b[0m"
+                    );
+                    exit!();
                 }
                 fs::read_to_string(path.to_owned() + "/config.json").unwrap()
             }
@@ -133,14 +135,14 @@ impl Config {
 
         Config::default_root_cfg(path.to_owned());
         for i in files {
-
             if check_exist(&(path.to_owned() + "/" + i)) {
                 continue;
             }
 
             println!("*info: creating file: {}", i);
 
-            File::create(path.to_owned() + i).expect("*error: \x1b[31mfailed to create default files\x1b[0m");
+            File::create(path.to_owned() + i)
+                .expect("*error: \x1b[31mfailed to create default files\x1b[0m");
         }
     }
 }

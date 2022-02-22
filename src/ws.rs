@@ -1,7 +1,7 @@
 use crate::*;
-use std::time::{SystemTime, UNIX_EPOCH};
 use futures::{FutureExt, StreamExt};
 use std::env;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
@@ -38,7 +38,11 @@ pub async fn client_connection(ws: WebSocket, clients: Clients) {
         let msg = match result {
             Ok(msg) => msg,
             Err(e) => {
-                println!("*warn: \x1b[33merror receiving message for id {}): {}\x1b[0m", uuid.clone(), e);
+                println!(
+                    "*warn: \x1b[33merror receiving message for id {}): {}\x1b[0m",
+                    uuid.clone(),
+                    e
+                );
                 break;
             }
         };
@@ -50,7 +54,9 @@ pub async fn client_connection(ws: WebSocket, clients: Clients) {
 
 async fn client_msg(client_id: &str, msg: Message, clients: &Clients) {
     let response = handle_response(msg).await;
-    if response.is_none() { return; }
+    if response.is_none() {
+        return;
+    }
 
     let locked = clients.lock().await;
     match locked.get(client_id) {
@@ -70,7 +76,7 @@ pub async fn ws_handler(ws: warp::ws::Ws, clients: Clients) -> Result<impl Reply
 fn get_cmd(msg: &str) -> Option<(&str, &str)> {
     let response = match msg.find(" ") {
         Some(v) => v,
-        None => return None
+        None => return None,
     };
     Some((&msg[..response], &msg[response..]))
 }
@@ -90,28 +96,37 @@ async fn handle_response(msg: Message) -> Option<String> {
     };
     let response = match command {
         "MSG" => {
-            create_rcon_connections(SESSIONS.to_vec(), "say".to_owned() + message)
+            let (_, in_game_message) = match get_cmd(message) {
+                Some(v) => v,
+                None => return None,
+            };
+            create_rcon_connections(SESSIONS.to_vec(), "say ".to_owned() + in_game_message)
                 .await
                 .unwrap();
             return None;
-        },
+        }
         "CMD" => {
-            if command_index.is_none() { return None; }
+            if command_index.is_none() {
+                return None;
+            }
             let (target, cmd) = match get_cmd(&message[command_index.unwrap()..]) {
                 Some(v) => v,
-                None => return None
+                None => return None,
             };
             send_command(target, cmd).await;
             return None;
-        },
+        }
         "CHECK" => Some(sys_check()),
         "HEARTBEAT" => Some(sys_health_check().to_string()),
         "PING" => {
-            let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+            let time = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis();
             //send_to_clients(clients, &format!("PONG {time}")).await;
-            return Some(format!("PONG {time}")); 
+            return Some(format!("PONG {time}"));
         }
-        _ => None
+        _ => None,
     };
     response
 }

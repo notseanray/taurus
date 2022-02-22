@@ -463,27 +463,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lupus"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "evalexpr",
- "futures",
- "lazy_static",
- "libc",
- "rcon-rs",
- "regex",
- "serde",
- "serde_derive",
- "serde_json",
- "sysinfo",
- "tokio",
- "tokio-stream",
- "uuid",
- "warp",
-]
-
-[[package]]
 name = "matches"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -944,6 +923,27 @@ dependencies = [
  "once_cell",
  "rayon",
  "winapi",
+]
+
+[[package]]
+name = "taurus"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "evalexpr",
+ "futures",
+ "lazy_static",
+ "libc",
+ "rcon-rs",
+ "regex",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "sysinfo",
+ "tokio",
+ "tokio-stream",
+ "uuid",
+ "warp",
 ]
 
 [[package]]
