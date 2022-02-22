@@ -5,7 +5,7 @@ use std::process::Command;
 use std::time::SystemTime;
 use sysinfo::{System, SystemExt};
 
-pub async fn backup(
+pub fn backup(
     args: Option<Vec<String>>,
     keep_time: usize,
     backup_dir: String,
@@ -119,7 +119,7 @@ Last Backup: {}s ago, Next Backup in: {}s```",
             }
 
             // find the absolute path of the file that we need to delete
-            let path = format!("{}/lupus-{}", backup_store, args[index + 1]);
+            let path = format!("{}/taurus-{}", backup_store, args[index + 1]);
 
             // check if it exists, if it doesn't then we must say that otherwise we can continue
             if !check_exist(&path.to_owned()) {
@@ -159,7 +159,7 @@ Last Backup: {}s ago, Next Backup in: {}s```",
         }
 
         if args.to_owned().contains(&"lock".to_owned()) {
-            if check_exist("/tmp/lupus-backup.lock") {
+            if check_exist("/tmp/taurus-backup.lock") {
                 return "lock file already exist".to_string();
             }
 
@@ -279,6 +279,6 @@ fn new(backup_store: String, backup_dir: String, keep_time: u64) -> String {
     }
 
     // remove the now uneeded lock file
-    fs::remove_file("/tmp/HypnosCore-Backup.lock").expect("failed to remove backup lock file!");
+    fs::remove_file("/tmp/taurus-backup.lock").expect("failed to remove backup lock file!");
     return "Successfully created new backup".to_string();
 }

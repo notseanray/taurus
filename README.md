@@ -1,6 +1,6 @@
 <h3 align="center">
 	<br>
-	lupus
+	taurus
 	<br>
 </h3>
 
@@ -10,7 +10,7 @@
 	<a href="./LICENSE"><img src="https://img.shields.io/badge/license-GPL%20v3.0-blue.svg"></a>
 </p>
 
-Lupus is a utility to administer backups with future integration with rsync. Many other features are either included or planned such as chat bridges using rcon and or parsing the pipe output from programs/games. 
+Taurus is a utility to administer backups with future integration with rsync. Many other features are either included or planned such as chat bridges using rcon and or parsing the pipe output from programs/games. 
 
 Using a websocket, this bot is meant to be interacted with through a 'frontend', a javascript example of this is included in [js](./js/frontend.js) folder. Future additions will allow copies of itself to communicate with each other across servers.
 
@@ -25,13 +25,7 @@ it is recommended you have [cargo](https://doc.rust-lang.org/cargo/getting-start
 ensure that you have `tar`, `tmux`, and `git`, this was only tested on linux, however, any *nix based system should support it, and wsl2 for windows should also function fine. 
 
 ```
-$ mkdir lupus-runtime
-$ git clone git@github.com:NotCreative21/lupus.git
-$ cd lupus
-$ cargo build --release
-$ cp target/release/lupus ../lupus-runtime
-$ cd ../lupus-runtime
-$ ./lupus-runtime
+$ wget https://github.com/NotCreative21/taurus/blob/master/install.sh && bash
 ```
 
 The required configuration files will be generated on the initial run, additional optional configs can be filled out for more features. This github page will entail what each value does in the future.

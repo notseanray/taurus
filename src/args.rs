@@ -1,13 +1,12 @@
+use std::fs::remove_file;
 use crate::{exit, Config, Session};
 use std::fs::read_dir;
 
 pub fn parse_args(args: Vec<String>) {
-    if args.len() < 1 {
-        return;
-    }
+    if args.len() < 1 { return; }
     let parseable = args.iter().skip(1);
-    for i in parseable {
-        let path: String = args[0].to_owned()[..args[0].len() - 6].to_string();
+    let path: String = args[0].to_owned()[..args[0].len() - 6].to_string();
+    for (e, i) in parseable.enumerate() {
         match i.as_str() {
             "help" => {
                 println!(
@@ -37,15 +36,47 @@ example usage:
                     exit!();
                 }
 
-                if &args[1] == "ls" {
-                    let config = Config::load_config(path.clone());
-                    let mut backups = "backups: ".to_string();
-                    for i in read_dir(config.backup_location).unwrap() {
-                        let i = i.unwrap();
-                        backups.push_str(&format!("\t{}", i.file_name().to_string_lossy()));
-                    }
-                    println!("{backups}");
-                }
+                let config = Config::load_config(path.clone());
+                match args[e + 1].as_str() {
+                    "ls" => {
+                        let mut backups = "backups: ".to_string();
+                        for i in read_dir(config.backup_location).unwrap() {
+                            let i = i.unwrap();
+                            backups.push_str(&format!("\t{}", i.file_name().to_string_lossy()));
+                        }
+                        println!("{backups}");
+                    },
+                    "rm" => {
+                        if args.len() < 3 {
+                            panic!("\x1b[31m*error:\x1b[0m invalid args! please specify file to operate on");
+                        }
+
+                        if &args[e + 2] == "all" {
+                            let mut files = 0;
+                            for i in read_dir(config.backup_location).unwrap() {
+                                let i = match i {
+                                    Ok(v) => v,
+                                    Err(e) => panic!("\x1b[31m*error:\x1b[0m failed to read file due to: {e}") 
+                                };
+                                match remove_file(i.path()) {
+                                    Ok(_) => {
+                                        println!("*info: successfully removed {:#?}", i.file_name());
+                                        files += 1;
+                                    },
+                                    Err(e) => panic!("\x1b[31m*error:\x1b[0m failed to remove file due to: {e}")
+                                };
+                            }
+                            println!("*info: removed {files} files, exiting now");
+                            exit!();
+                        }
+
+                        match remove_file(config.backup_location + &args[e + 2]) {
+                            Ok(_) => {},
+                            Err(e) => panic!("\x1b[31m*error:\x1b[0m failed to remove file due to: {e}")
+                        };
+                    },
+                    _ => {}
+                };
                 exit!();
             }
             _ => {

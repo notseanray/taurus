@@ -25,9 +25,7 @@ lazy_static::lazy_static! {
 async fn main() {
     let startup = Instant::now();
 
-    let path = ARGS[0].to_owned()[..ARGS[0].len() - 6].to_string();
-
-    let config = Config::load_config(path.to_owned());
+    let config = Config::load_config(PATH.to_owned());
 
     if ARGS.len() > 1 {
         parse_args(ARGS.to_vec());
