@@ -1,11 +1,25 @@
-use libc::{c_int, pid_t};
-use std::path::PathBuf;
-use std::{collections::HashMap, sync::Arc};
-use sysinfo::{DiskExt, System, SystemExt};
-use tokio::sync::mpsc;
-use tokio::sync::Mutex;
-use warp::ws::Message;
-use warp::Rejection;
+use sysinfo::{
+    DiskExt, 
+    System, 
+    SystemExt
+};
+use std::{
+    collections::HashMap, 
+    sync::Arc,
+    path::PathBuf
+};
+use libc::{
+    c_int, 
+    pid_t
+};
+use tokio::sync::{
+    Mutex, 
+    mpsc
+};
+use warp::{
+    ws::Message,
+    Rejection
+};
 
 pub type Clients = Arc<Mutex<HashMap<String, WsClient>>>;
 pub type Result<T> = std::result::Result<T, Rejection>;
@@ -62,69 +76,6 @@ where
     }
 }
 
-/*
-// TODO
-// fix disk usage
-//
-pub async fn sys_check(dis: bool, chat_id: u64) {
-    let (mut sys, mut warn) = (System::new_all(), false);
-    sys.refresh_all();
-    let mut response = String::new();
-
-    // future, if first element < 100, it is the index of the disk that has problems
-    let (u, t, i) = check_disk(&sys);
-
-    // rustc is phasing out floats in match statements for obvious reasons, since we only need to check
-    // for one value we can multiply this to get around it
-    let x = (i * 100.0) as u16;
-    if x != 10 {
-        let drive = format!("drive low on space!:\nindex: {}\n", i);
-        warn = true;
-        response.push_str(&drive);
-    }
-    let drive = format!(
-        "drive usage: {:.1} Mb /{:.1} Mb ({:.1}%)\n",
-        u / 1048576.0,
-        t / 1048576.0,
-        (u / t) * 100.0
-    );
-    response.push_str(&drive);
-
-    let ldavg = &sys.load_average().five;
-
-    if ldavg > &0.0 {
-        if ldavg > &(sys.physical_core_count().unwrap() as f64) {
-            warn = true;
-            response.push_str(&"high load average detected!\n");
-        }
-        // core count is only accurate if you have hyperthreading
-        let avg = format!(
-            "load average (5 minutes): {} -> {} logical cores\n",
-            ldavg,
-            sys.physical_core_count().unwrap() * 2
-        );
-
-        response.push_str(&avg);
-    }
-
-    if (sys.used_memory() as f64 / sys.total_memory() as f64) > 0.9 {
-        response.push_str(&"high ram usage detected!\n");
-        warn = true;
-    }
-    let ramu = format!(
-        "ram usage: {} Mb / {} Mb ({:.2}%)\n",
-        sys.used_memory() / 1045,
-        sys.total_memory() / 1045,
-        (sys.used_memory() as f64 / sys.total_memory() as f64) * 100.0
-    );
-    response.push_str(&ramu);
-
-    let uptime = format!("server uptime: {} hrs\n", (sys.uptime() / 3600));
-
-    response.push_str(&uptime);
-}
-*/
-
 pub fn sys_check() -> String {
     let mut response = String::new();
     let mut sys = System::new_all();
@@ -149,6 +100,12 @@ pub fn sys_check() -> String {
         ));
     }
 
+    let (avg, per) = cpu_average(&sys);
+
+    response.push_str(&format!("load average: {avg} cpu average: {per}%"));
+
+    response.push_str(&format!("system uptime: {} hrs", uptime(&sys) / 3600));
+
     response
 }
 
@@ -160,7 +117,21 @@ pub fn sys_health_check() -> bool {
         return true;
     }
 
+    let (_, per) = cpu_average(&sys);
+    if per > 0.7 { return true; }
+
     false
+}
+
+fn cpu_average(sys: &System) -> (f32, f32) {
+    let ldavg = &sys.load_average().five;
+    if *ldavg < 0.0 { return (0.0, 0.0); }
+    let corec = sys.physical_core_count().unwrap();
+    (*ldavg as f32, *ldavg as f32 / corec as f32)
+}
+
+fn uptime(sys: &System) -> u64 {
+    sys.uptime()
 }
 
 fn get_ram(sys: &System) -> (u64, u64) {
