@@ -1,6 +1,12 @@
-use std::fs::remove_file;
-use crate::{exit, Config, Session};
-use std::fs::read_dir;
+use std::fs::{
+    read_dir, 
+    remove_file
+};
+use crate::{
+    exit, 
+    Config, 
+    Session
+};
 
 pub fn parse_args(args: Vec<String>) {
     if args.len() < 1 { return; }
@@ -30,8 +36,7 @@ pub fn parse_args(args: Vec<String>) {
 example usage:
     lupus backup ls         | list backups
     lupus backup rm file    | remove certain backup
-    lupus backup rm all     | remove all backups
-    lupus backup config     | backup config"
+    lupus backup rm all     | remove all backups"
                     );
                     exit!();
                 }

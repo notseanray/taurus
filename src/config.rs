@@ -1,8 +1,13 @@
-use crate::*;
+use crate::{
+    exit, 
+    utils::check_exist
+};
+use std::{
+    fs, 
+    fs::File
+};
 use serde_derive::Deserialize;
 use serde_json::from_str;
-use std::fs;
-use std::fs::File;
 
 #[derive(Deserialize)]
 pub struct Config {

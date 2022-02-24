@@ -1,9 +1,22 @@
-use crate::*;
-use rcon_rs::{Client, PacketType};
+use crate::{
+    utils::reap,
+    utils::check_exist,
+    utils::Result,
+    config::Session
+};
+use rcon_rs::{
+    Client, 
+    PacketType
+};
+use std::io::{
+    BufRead, 
+    BufReader
+};
+use std::{
+    fs::File,
+    process::Command
+};
 use regex::Regex;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
-use std::process::Command;
 
 // update messages from the log file, this takes in the log file, checks if the lines can be
 // ignored, then checks if the new lines are in game commands, if they are then use handle command

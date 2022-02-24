@@ -1,19 +1,38 @@
-use bridge::*;
-use std::{collections::HashMap, convert::Infallible, env, sync::Arc};
-use tokio::sync::Mutex;
-use warp::Filter;
-
+mod bridge;
+mod ws;
+mod utils;
+mod config;
 mod args;
 mod backup;
-mod bridge;
-mod config;
-mod ws;
+use utils::{
+    Clients, 
+    send_to_clients
+};
+use config::{
+    Session, 
+    Config
+};
+use bridge::{
+    gen_pipe, 
+    set_lines, 
+    update_messages, 
+    replace_formatting
+};
+use std::{
+    collections::HashMap, 
+    convert::Infallible, 
+    env, 
+    sync::Arc, 
+    time::{
+        Duration, 
+        Instant
+    }
+};
+use args::parse_args;
+use ws::ws_handler;
 use backup::backup;
-use config::*;
-use std::time::{Duration, Instant};
-use taurus::*;
-
-use crate::args::parse_args;
+use tokio::sync::Mutex;
+use warp::Filter;
 
 lazy_static::lazy_static! {
     static ref ARGS: Vec<String> = env::args().collect();
@@ -37,7 +56,7 @@ async fn main() {
     let ws_route = warp::path("taurus")
         .and(warp::ws())
         .and(with_clients(clients.clone()))
-        .and_then(ws::ws_handler);
+        .and_then(ws_handler);
     let routes = ws_route.with(warp::cors().allow_any_origin());
 
     let mut ip = [0; 4];

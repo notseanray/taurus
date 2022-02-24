@@ -25,8 +25,10 @@ it is recommended you have [cargo](https://doc.rust-lang.org/cargo/getting-start
 ensure that you have `tar`, `tmux`, and `git`, this was only tested on linux, however, any *nix based system should support it, and wsl2 for windows should also function fine. 
 
 ```
-$ wget https://github.com/NotCreative21/taurus/blob/master/install.sh && bash
+$ wget https://github.com/NotCreative21/taurus/blob/master/install.sh -sSf | sh
 ```
+
+* the lld linker can be used to improve compiling times
 
 The required configuration files will be generated on the initial run, additional optional configs can be filled out for more features. This github page will entail what each value does in the future.
 
