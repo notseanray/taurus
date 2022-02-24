@@ -10,11 +10,11 @@
 	<a href="./LICENSE"><img src="https://img.shields.io/badge/license-GPL%20v3.0-blue.svg"></a>
 </p>
 
-Taurus is a utility to administer backups with future integration with rsync. Many other features are either included or planned such as chat bridges using rcon and or parsing the pipe output from programs/games. 
+Taurus is a utility to administer backups with future integration with rsync. Many other features are either included or planned such as chat bridges using rcon and/or parsing the pipe output from programs/games. 
 
-Using a websocket, this bot is meant to be interacted with through a 'frontend', a javascript example of this is included in [js](./js/frontend.js) folder. Future additions will allow copies of itself to communicate with each other across servers.
+This bot is meant to be interacted with through a 'frontend' using a websocket. A javascript example of this is included in [js](./js/frontend.js) folder. Future additions will allow copies of itself to communicate with each other across servers.
 
-Doing this has a few affects, primarily it isolates a whole set of issues to the code that is running in the front. Stability like this is important with things that handle file system operations such as backups, as this is why I've split like this. 
+Doing this has a few effects, primarily, it isolates a whole set of issues to the code that is running in the front. Stability like this is important with things that handle file system operations such as backups, as this is why I've split like this. 
 
 This has similar use cases to [this](https://github.com/NotCreative21/hypnos_core), however I feel it is far more efficient.
 
@@ -22,7 +22,7 @@ This has similar use cases to [this](https://github.com/NotCreative21/hypnos_cor
 
 it is recommended you have [cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html) installed
 
-ensure that you have `tar`, `tmux`, and `git`, this was only tested on linux, however, any *nix based system should support it, and wsl2 for windows should also function fine. 
+ensure that you have `tar`, `tmux`, and `git`; this was only tested on linux, however, any *nix based system should support it, and wsl2 for windows should also function fine. 
 
 ```
 $ wget https://github.com/NotCreative21/taurus/blob/master/install.sh -sSf | sh
