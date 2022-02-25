@@ -19,9 +19,13 @@ use futures::{
     FutureExt, 
     StreamExt
 };
-use std::time::{
-    SystemTime, 
-    UNIX_EPOCH
+use std::{
+    env,
+    process::Command;
+    time::{
+        SystemTime, 
+        UNIX_EPOCH
+    }
 };
 use warp::{
     ws::{
@@ -30,8 +34,7 @@ use warp::{
     },
     Reply
 };
-use std::env;
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, process::Command};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
 
@@ -142,7 +145,18 @@ async fn handle_response(msg: Message) -> Option<String> {
             };
             send_command(target, cmd).await;
             return None;
-        }
+        },
+        "SHELL" => {
+            let (cmd, args) = match get_cmd(&command) {
+                Some(v) => v,
+                None => return None
+            };
+            println!("*info: shell cmd {cmd} with args: {args}");
+            Command::new(cmd)
+                .args(args.split(" "))
+                .spawn();
+            return None;
+        },
         "CHECK" => Some(sys_check()),
         "HEARTBEAT" => Some(sys_health_check().to_string()),
         "PING" => {
