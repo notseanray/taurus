@@ -10,10 +10,7 @@ use crate::{
         Session, 
         Config
     },
-    bridge::{
-        send_command, 
-        create_rcon_connections
-    }
+    bridge::send_command, 
 };
 use futures::{
     FutureExt, 
@@ -21,7 +18,6 @@ use futures::{
 };
 use std::{
     env,
-    process::Command;
     time::{
         SystemTime, 
         UNIX_EPOCH
@@ -39,12 +35,18 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
 
 lazy_static::lazy_static! {
+    static ref CONFIG_PATH: String = {
+        let path: Vec<String> = env::args().collect();
+        path[0][..path[0].len() - 6].to_string()
+    };
     static ref SESSIONS: Vec<Session> = {
         tokio::runtime::Runtime::new().unwrap().block_on(async {
-            let path: Vec<String> = env::args().collect();
-            let trimmed_path = path[0][..path[0].len() - 6].to_string();
-            Config::load_sessions(trimmed_path)
+            Config::load_sessions(CONFIG_PATH.to_string())
         })
+    };
+    static ref RESTART_SCRIPT: Option<String> = {
+        let config = Config::load_config(CONFIG_PATH.to_string());
+        config.restart_script
     };
 }
 
@@ -108,7 +110,7 @@ fn get_cmd(msg: &str) -> Option<(&str, &str)> {
         Some(v) => v,
         None => return None,
     };
-    Some((&msg[..response], &msg[response..]))
+    Some((&msg[..response], &msg[response + 1..]))
 }
 
 async fn handle_response(msg: Message) -> Option<String> {
@@ -130,14 +132,14 @@ async fn handle_response(msg: Message) -> Option<String> {
                 Some(v) => v,
                 None => return None,
             };
-            create_rcon_connections(SESSIONS.to_vec(), "say ".to_owned() + in_game_message)
-                .await
-                .unwrap();
+            // TODO 
+            // replace with tmux json + cleanse input
+            //create_rcon_connections(SESSIONS.to_vec(), "say ".to_owned() + in_game_message).unwrap();
             return None;
         }
         "CMD" => {
             if command_index.is_none() {
-                return None;
+                return Some("invalid command".to_string());
             }
             let (target, cmd) = match get_cmd(&message[command_index.unwrap()..]) {
                 Some(v) => v,
@@ -146,13 +148,28 @@ async fn handle_response(msg: Message) -> Option<String> {
             send_command(target, cmd).await;
             return None;
         },
+        "RESTART" => {
+            let script_path = match RESTART_SCRIPT.to_owned() {
+                Some(v) => v,
+                None => return Some("no restart script found".to_string())
+            };
+            let restart = Command::new("sh")
+                .arg(script_path)
+                .status()
+                .await
+                .expect("could not execute restart script");
+            if restart.success() {
+                return Some("restarting...".to_string());
+            }
+            return Some("failed to execute restart script".to_string());
+        },
         "SHELL" => {
             let (cmd, args) = match get_cmd(&command) {
                 Some(v) => v,
                 None => return None
             };
             println!("*info: shell cmd {cmd} with args: {args}");
-            Command::new(cmd)
+            let _ = Command::new(cmd)
                 .args(args.split(" "))
                 .spawn();
             return None;

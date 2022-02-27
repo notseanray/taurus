@@ -54,7 +54,10 @@ pub struct Rcon {
 }
 
 impl Config {
-    pub fn load_config(path: String) -> Config {
+    pub fn load_config<T>(path: T) -> Config 
+        where T: ToString
+    {
+        let path = path.to_string();
         let config_path = &(path.to_owned() + "/config.json");
         if !check_exist(config_path) {
             Config::default(path.to_owned());
@@ -97,8 +100,22 @@ impl Config {
         File::create(path.to_owned() + "/config.json")
             .expect("*error: \x1b[31mfailed to create default config file\x1b[0m");
 
-        let default = "{
-}";
+        let default = r#"{
+    "ws_ip": "127.0.0.1",
+    "ws_port": "7500",
+    "backup_location": "",
+    "scripts": [
+        {
+            "description": "very cool script",
+            "interval": 0,
+            "absolute": 0,
+            "shell_cmd": "",
+            "mc_cmd": ""
+        }
+    ],
+    "restart_script": "",
+    "recompile_directory": ""
+}"#;
 
         fs::write(path.to_owned() + "/config.json", default)
             .expect("*error: \x1b[31mfailed to write defaults to config file\x1b[0m");

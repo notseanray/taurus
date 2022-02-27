@@ -1,12 +1,6 @@
 use crate::{
     utils::reap,
     utils::check_exist,
-    utils::Result,
-    config::Session
-};
-use rcon_rs::{
-    Client, 
-    PacketType
 };
 use std::io::{
     BufRead, 
@@ -107,39 +101,10 @@ where
     reader.lines().count()
 }
 
-pub async fn create_rcon_connections<T>(session: Vec<Session>, msg: T) -> Result<()>
-where
-    T: ToString,
-{
-    let msg = msg.to_string();
-    for i in session {
-        let rcon = match i.rcon {
-            Some(v) => v,
-            None => continue,
-        };
-
-        let ip = match rcon.to_owned().ip {
-            Some(t) => t,
-            None => "127.0.0.1".to_string(),
-        };
-
-        let mut conn = Client::new(&ip, &rcon.to_owned().port.to_string());
-        let auth = conn.auth(&rcon.password);
-        match auth {
-            Ok(_) => {}
-            Err(e) => {
-                eprintln!("*warn: \x1b[33mrcon failure: {:#?}\x1b[0m", e);
-            }
-        }
-
-        let _ = conn.send(&msg, Some(PacketType::Cmd));
-    }
-    Ok(())
-}
-
 // This removes all the formmating codes coming from MC chat with regex
 #[inline(always)]
 pub fn replace_formatting(mut msg: String) -> String {
+    // TODO MORE REGEX
     msg = msg.replace("_", "\\_");
     // regex to replace any '§' followed by digits with a blank space
     let mc_codes = Regex::new(r"§.*\d").unwrap();
@@ -182,7 +147,7 @@ where
     T: ToString,
 {
     let server_name = server_name.to_string();
-    let pipe = format!("/tmp/{server_name}-lupus");
+    let pipe = format!("/tmp/{server_name}-taurus");
     if rm {
         // remove the old pipe file if it exists
         if check_exist(&pipe) {

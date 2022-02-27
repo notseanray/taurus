@@ -2,8 +2,7 @@ mod bridge;
 mod ws;
 mod utils;
 mod config;
-mod args;
-mod backup;
+mod args; mod backup;
 use utils::{
     Clients, 
     send_to_clients
@@ -64,8 +63,8 @@ async fn main() {
         ip[i] = match e.parse::<u8>() {
             Ok(t) => t,
             Err(e) => {
-                eprintln!("*error: \x1b[31m{}", e);
-                panic!("*error: invalid ip in config file! exiting\x1b[0m");
+                eprintln!("*error: \x1b[31m{}\x1b[0m", e);
+                panic!("*error: \x1b[31minvalid ip in config file! exiting\x1b[0m");
             }
         }
     }
@@ -80,62 +79,72 @@ async fn main() {
             );
             continue;
         }
-        gen_pipe(i.name.to_owned(), false).await;
-        tokio::time::sleep(Duration::from_millis(20)).await;
+        // TODO
+        // add docker support for piping
+        match i.host.as_str() {
+            "tmux" => gen_pipe(i.name.to_owned(), false).await,
+            _ => {}
+        };
+        tokio::time::sleep(Duration::from_millis((SESSIONS.len() * 10) as u64)).await;
         line_map.insert(i.name.to_owned(), set_lines(i.name.to_owned()));
     }
 
     tokio::spawn(async move {
-        let mut response = Vec::new();
-        for (key, value) in line_map.iter() {
-            let (msg, line_count) = update_messages(key.to_owned(), *value).await;
-            if msg.is_none() {
-                continue;
+        loop {
+            let mut response = Vec::new();
+            for (key, value) in line_map.clone().iter() {
+                let (msg, line_count) = update_messages(key.to_owned(), *value).await;
+                let msg = match msg {
+                    Some(v) => v,
+                    None => continue,
+                };
+                if msg.len() < 8 { break; }
+                let key = key.clone().to_string();
+                // This is very janky and probably should be redone
+                let _ = line_map.to_owned().remove_entry(&key);
+                line_map.insert(key, line_count);
+                response.push(msg);
             }
-            let msg = msg.unwrap();
-            line_map
-                .to_owned()
-                .entry(key.clone().into())
-                .and_modify(|x| *x = line_count);
-            response.push(msg);
+            let msg = replace_formatting(response.join("x"));
+            send_to_clients(&clients.clone(), &format!("MSG {}", msg)).await;
+            tokio::time::sleep(Duration::from_millis(250)).await;
         }
-        let msg = replace_formatting(response.join("\n"));
-        send_to_clients(&clients.clone(), &format!("MSG {}", msg)).await;
-        tokio::time::sleep(Duration::from_millis(250)).await;
     });
 
     let mut clock: usize = 0;
 
     tokio::spawn(async move {
-        clock += 1;
-        for i in &SESSIONS.to_owned() {
-            if i.game.is_none() || i.game.to_owned().unwrap().backup_interval.is_none() {
-                continue;
-            }
-
-            let e = i.game.to_owned().unwrap();
-
-            if e.backup_interval.is_some()
-                && clock % e.backup_interval.unwrap() == 0
-                && clock > e.backup_interval.unwrap()
-            {
-                let keep_time = match e.backup_keep {
-                    Some(t) => t,
-                    None => usize::MAX,
-                };
-                if e.file_path.is_none() || e.backup_interval.is_none() {
+        loop {
+            clock += 1;
+            for i in &SESSIONS.to_owned() {
+                if i.game.is_none() || i.game.to_owned().unwrap().backup_interval.is_none() {
                     continue;
                 }
-                let _ = backup(
-                    None,
-                    keep_time,
-                    e.file_path.unwrap(),
-                    config.backup_location.to_owned(),
-                    e.backup_interval.to_owned().unwrap(),
-                );
+
+                let e = i.game.to_owned().unwrap();
+
+                if e.backup_interval.is_some() && 
+                    clock % e.backup_interval.unwrap() == 0 && 
+                    clock > e.backup_interval.unwrap()
+                {
+                    let keep_time = match e.backup_keep {
+                        Some(t) => t,
+                        None => usize::MAX,
+                    };
+                    if e.file_path.is_none() || e.backup_interval.is_none() {
+                        continue;
+                    }
+                    let _ = backup(
+                        None,
+                        keep_time,
+                        e.file_path.unwrap(),
+                        config.backup_location.to_owned(),
+                        e.backup_interval.to_owned().unwrap(),
+                    );
+                }
             }
+            tokio::time::sleep(Duration::from_millis(1000)).await;
         }
-        tokio::time::sleep(Duration::from_millis(1000)).await;
     });
 
     print!(

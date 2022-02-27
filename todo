@@ -1,0 +1,8 @@
+
+more regex for in/out
+reimplement backup system with rsync and tar crate
+remove anyhow crate
+remove uneeded tokio and libc inclusion
+clean up ip parsing
+colored print macros
+switch to notify crate instead of polling log file
