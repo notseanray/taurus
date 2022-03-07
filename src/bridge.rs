@@ -1,16 +1,10 @@
-use crate::{
-    utils::reap,
-    utils::check_exist,
-};
-use std::io::{
-    BufRead, 
-    BufReader
-};
-use std::{
-    fs::File,
-    process::Command
-};
+use crate::config::Session;
+use crate::{utils::check_exist, utils::reap};
+use futures::Future;
 use regex::Regex;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use tokio::process::Command;
 
 // update messages from the log file, this takes in the log file, checks if the lines can be
 // ignored, then checks if the new lines are in game commands, if they are then use handle command
@@ -24,7 +18,7 @@ where
     T: ToString,
 {
     let server_name = server_name.to_string();
-    let file_path: String = format!("/tmp/{server_name}-lupus");
+    let file_path: String = format!("/tmp/{server_name}-taurus");
     if !check_exist(&file_path.to_owned()) {
         return (None, 0);
     }
@@ -94,21 +88,55 @@ where
     T: ToString,
 {
     let server_name = server_name.to_string();
-    let file = File::open(&format!("/tmp/{server_name}-lupus")).unwrap();
+    let file = File::open(&format!("/tmp/{server_name}-taurus")).unwrap();
     let reader = BufReader::new(file);
 
     // count the amount of lines in the log file
     reader.lines().count()
 }
 
-// This removes all the formmating codes coming from MC chat with regex
 #[inline(always)]
-pub fn replace_formatting(mut msg: String) -> String {
+pub fn replace_formatting<T>(msg: T) -> String
+where
+    T: ToString,
+{
+    let msg = msg.to_string();
     // TODO MORE REGEX
-    msg = msg.replace("_", "\\_");
     // regex to replace any '§' followed by digits with a blank space
-    let mc_codes = Regex::new(r"§.*\d").unwrap();
-    mc_codes.replace_all(&msg, "").to_owned().to_string()
+    let replacements = Regex::new(r"§.*\d").unwrap();
+    replacements.replace_all(&msg, "").to_owned().to_string();
+    msg.replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+        .replace("_", "\\_")
+}
+
+pub fn send_chat<T>(servers: Vec<Session>, message: T)
+where
+    T: ToString,
+{
+    let chat = replace_formatting(message.to_string());
+    // TODO replace formatting
+    for server in servers {
+        send_command(
+            server.name,
+            format!("tellraw @a {{ \"text\": \"{chat}\" }}"),
+        );
+    }
+}
+
+pub async fn join_parallel<T: Send + 'static>(
+    futs: impl IntoIterator<Item = impl Future<Output = T> + Send + 'static>,
+) -> Vec<T> {
+    let tasks: Vec<_> = futs.into_iter().map(tokio::spawn).collect();
+    // unwrap the Result because it is introduced by tokio::spawn()
+    // and isn't something our caller can handle
+    futures::future::join_all(tasks)
+        .await
+        .into_iter()
+        .map(Result::unwrap)
+        .collect()
 }
 
 // small function to send a command to the specific tmux session, this replaces new lines due to it
@@ -117,23 +145,15 @@ pub fn replace_formatting(mut msg: String) -> String {
 // this is one of the limitations of this system, but it's not that bad because if there are
 // multiple lines you can send the command multiple times
 #[inline(always)]
-pub async fn send_command<T>(server_name: T, message: T)
+pub fn send_command<T>(server_name: T, message: T)
 where
     T: ToString,
 {
     let (message, server_name) = (message.to_string(), server_name.to_string());
-    // if there are any non ascii characters then we can return as there's likely problems with the
-    // rest of the command
-    message.chars().for_each(|c| {
-        if !c.is_ascii() {
-            return;
-        }
-    });
 
-    Command::new("tmux")
+    let _ = Command::new("tmux")
         .args(["send-keys", "-t", &server_name, &message, "Enter"])
-        .spawn()
-        .expect("*error: failed to send to tmux session");
+        .spawn();
 
     reap();
 }

@@ -1,38 +1,20 @@
 use crate::{
-    utils::{
-        Clients, 
-        WsClient, 
-        Result, 
-        sys_check, 
-        sys_health_check
-    },
-    config::{
-        Session, 
-        Config
-    },
-    bridge::send_command, 
+    bridge::{join_parallel, replace_formatting, send_chat, send_command},
+    config::{Config, Session},
+    utils::{sys_check, sys_health_check, Clients, Result, WsClient},
 };
-use futures::{
-    FutureExt, 
-    StreamExt
-};
+use futures::{FutureExt, StreamExt};
 use std::{
     env,
-    time::{
-        SystemTime, 
-        UNIX_EPOCH
-    }
+    time::{SystemTime, UNIX_EPOCH},
 };
-use warp::{
-    ws::{
-        Message, 
-        WebSocket
-    },
-    Reply
-};
-use tokio::{sync::mpsc, process::Command};
+use tokio::{process::Command, sync::mpsc};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
+use warp::{
+    ws::{Message, WebSocket},
+    Reply,
+};
 
 lazy_static::lazy_static! {
     static ref CONFIG_PATH: String = {
@@ -40,9 +22,7 @@ lazy_static::lazy_static! {
         path[0][..path[0].len() - 6].to_string()
     };
     static ref SESSIONS: Vec<Session> = {
-        tokio::runtime::Runtime::new().unwrap().block_on(async {
-            Config::load_sessions(CONFIG_PATH.to_string())
-        })
+        Config::load_sessions(CONFIG_PATH.to_string())
     };
     static ref RESTART_SCRIPT: Option<String> = {
         let config = Config::load_config(CONFIG_PATH.to_string());
@@ -132,26 +112,33 @@ async fn handle_response(msg: Message) -> Option<String> {
                 Some(v) => v,
                 None => return None,
             };
-            // TODO 
+            let chat = replace_formatting(in_game_message);
+            // TODO
             // replace with tmux json + cleanse input
-            //create_rcon_connections(SESSIONS.to_vec(), "say ".to_owned() + in_game_message).unwrap();
+            for server in &SESSIONS.to_vec() {
+                send_command(
+                    &server.name,
+                    &format!(r#"tellraw @a {{ "text": "{}" }}"#, chat),
+                );
+            }
             return None;
         }
         "CMD" => {
             if command_index.is_none() {
                 return Some("invalid command".to_string());
             }
-            let (target, cmd) = match get_cmd(&message[command_index.unwrap()..]) {
+            let (target, cmd) = match get_cmd(&message[command_index.unwrap() + 1..]) {
                 Some(v) => v,
                 None => return None,
             };
-            send_command(target, cmd).await;
+            println!("{}={}", target, cmd);
+            send_command(target, cmd);
             return None;
-        },
+        }
         "RESTART" => {
             let script_path = match RESTART_SCRIPT.to_owned() {
                 Some(v) => v,
-                None => return Some("no restart script found".to_string())
+                None => return Some("no restart script found".to_string()),
             };
             let restart = Command::new("sh")
                 .arg(script_path)
@@ -162,18 +149,24 @@ async fn handle_response(msg: Message) -> Option<String> {
                 return Some("restarting...".to_string());
             }
             return Some("failed to execute restart script".to_string());
-        },
+        }
         "SHELL" => {
-            let (cmd, args) = match get_cmd(&command) {
-                Some(v) => v,
-                None => return None
+            let instructions: Vec<&str> =
+                message[command_index.unwrap() + 1..].split(" ").collect();
+            let command = instructions[0];
+            let args = match instructions.len() {
+                2.. => Some(&instructions[1..]),
+                _ => None,
             };
-            println!("*info: shell cmd {cmd} with args: {args}");
-            let _ = Command::new(cmd)
-                .args(args.split(" "))
-                .spawn();
+
+            println!("*info: shell cmd {command}");
+            if args.is_some() {
+                let _ = Command::new(command).args(args.unwrap()).spawn();
+                return None;
+            }
+            let _ = Command::new(command).spawn();
             return None;
-        },
+        }
         "CHECK" => Some(sys_check()),
         "HEARTBEAT" => Some(sys_health_check().to_string()),
         "PING" => {

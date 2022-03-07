@@ -1,37 +1,24 @@
+mod args;
+mod backup;
 mod bridge;
-mod ws;
-mod utils;
 mod config;
-mod args; mod backup;
-use utils::{
-    Clients, 
-    send_to_clients
-};
-use config::{
-    Session, 
-    Config
-};
-use bridge::{
-    gen_pipe, 
-    set_lines, 
-    update_messages, 
-    replace_formatting
-};
-use std::{
-    collections::HashMap, 
-    convert::Infallible, 
-    env, 
-    sync::Arc, 
-    time::{
-        Duration, 
-        Instant
-    }
-};
+mod utils;
+mod ws;
 use args::parse_args;
-use ws::ws_handler;
 use backup::backup;
+use bridge::{gen_pipe, replace_formatting, set_lines, update_messages};
+use config::{Config, Session};
+use std::{
+    collections::HashMap,
+    convert::Infallible,
+    env,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio::sync::Mutex;
+use utils::{send_to_clients, Clients};
 use warp::Filter;
+use ws::ws_handler;
 
 lazy_static::lazy_static! {
     static ref ARGS: Vec<String> = env::args().collect();
@@ -39,7 +26,7 @@ lazy_static::lazy_static! {
     static ref SESSIONS: Vec<Session> = Config::load_sessions(PATH.to_owned());
 }
 
-#[tokio::main(flavor = "multi_thread", worker_threads = 8)]
+#[tokio::main]
 async fn main() {
     let startup = Instant::now();
 
@@ -49,7 +36,7 @@ async fn main() {
         parse_args(ARGS.to_vec());
     }
 
-    env::set_var("LUPUS_SESSIONS", SESSIONS.len().to_string());
+    env::set_var("TAURUS_SESSIONS", SESSIONS.len().to_string());
 
     let clients: Clients = Arc::new(Mutex::new(HashMap::new()));
     let ws_route = warp::path("taurus")
@@ -98,14 +85,17 @@ async fn main() {
                     Some(v) => v,
                     None => continue,
                 };
-                if msg.len() < 8 { break; }
+                if msg.len() < 8 {
+                    break;
+                }
                 let key = key.clone().to_string();
                 // This is very janky and probably should be redone
                 let _ = line_map.to_owned().remove_entry(&key);
                 line_map.insert(key, line_count);
                 response.push(msg);
             }
-            let msg = replace_formatting(response.join("x"));
+            let msg = &response.join("\n");
+            replace_formatting(msg.to_owned());
             send_to_clients(&clients.clone(), &format!("MSG {}", msg)).await;
             tokio::time::sleep(Duration::from_millis(250)).await;
         }
@@ -123,9 +113,9 @@ async fn main() {
 
                 let e = i.game.to_owned().unwrap();
 
-                if e.backup_interval.is_some() && 
-                    clock % e.backup_interval.unwrap() == 0 && 
-                    clock > e.backup_interval.unwrap()
+                if e.backup_interval.is_some()
+                    && clock % e.backup_interval.unwrap() == 0
+                    && clock > e.backup_interval.unwrap()
                 {
                     let keep_time = match e.backup_keep {
                         Some(t) => t,

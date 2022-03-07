@@ -1,25 +1,8 @@
-use sysinfo::{
-    DiskExt, 
-    System, 
-    SystemExt
-};
-use std::{
-    collections::HashMap, 
-    sync::Arc,
-    path::PathBuf
-};
-use libc::{
-    c_int, 
-    pid_t
-};
-use tokio::sync::{
-    Mutex, 
-    mpsc
-};
-use warp::{
-    ws::Message,
-    Rejection
-};
+use libc::{c_int, pid_t};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use sysinfo::{DiskExt, System, SystemExt};
+use tokio::sync::{mpsc, Mutex};
+use warp::{ws::Message, Rejection};
 
 pub type Clients = Arc<Mutex<HashMap<String, WsClient>>>;
 pub type Result<T> = std::result::Result<T, Rejection>;
@@ -118,14 +101,18 @@ pub fn sys_health_check() -> bool {
     }
 
     let (_, per) = cpu_average(&sys);
-    if per > 0.7 { return true; }
+    if per > 0.7 {
+        return true;
+    }
 
     false
 }
 
 fn cpu_average(sys: &System) -> (f32, f32) {
     let ldavg = &sys.load_average().five;
-    if *ldavg < 0.0 { return (0.0, 0.0); }
+    if *ldavg < 0.0 {
+        return (0.0, 0.0);
+    }
     let corec = sys.physical_core_count().unwrap();
     (*ldavg as f32, *ldavg as f32 / corec as f32)
 }
@@ -166,4 +153,3 @@ fn disk_info(sys: &System) -> Vec<(u64, u64, f32)> {
     }
     response
 }
-

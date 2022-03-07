@@ -1,13 +1,7 @@
-use crate::{
-    exit, 
-    utils::check_exist
-};
-use std::{
-    fs, 
-    fs::File
-};
+use crate::{exit, utils::check_exist};
 use serde_derive::Deserialize;
 use serde_json::from_str;
+use std::{fs, fs::File};
 
 #[derive(Deserialize)]
 pub struct Config {
@@ -54,8 +48,9 @@ pub struct Rcon {
 }
 
 impl Config {
-    pub fn load_config<T>(path: T) -> Config 
-        where T: ToString
+    pub fn load_config<T>(path: T) -> Config
+    where
+        T: ToString,
     {
         let path = path.to_string();
         let config_path = &(path.to_owned() + "/config.json");

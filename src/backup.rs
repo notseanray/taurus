@@ -1,18 +1,7 @@
-use sysinfo::{
-    System, 
-    SystemExt
-};
-use crate::utils::{
-    check_exist, 
-    sys_health_check, 
-    reap
-};
-use std::{
-    process::Command, 
-    fs, 
-    time::SystemTime
-};
+use crate::utils::{check_exist, reap, sys_health_check};
 use chrono::prelude::*;
+use std::{fs, process::Command, time::SystemTime};
+use sysinfo::{System, SystemExt};
 
 pub fn backup(
     args: Option<Vec<String>>,
