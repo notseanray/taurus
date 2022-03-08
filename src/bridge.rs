@@ -1,6 +1,5 @@
 use crate::config::Session;
 use crate::{utils::check_exist, utils::reap};
-use futures::Future;
 use regex::Regex;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -74,7 +73,7 @@ where
     }
 
     // if it is above 2k however, we can reset the pipe and notify the to the console
-    gen_pipe(server_name.to_owned(), true).await;
+    gen_pipe(&server_name, true).await;
     println!("*info: pipe file reset -> {server_name}");
 
     // return new line count to update the one in the main file
@@ -112,31 +111,12 @@ where
         .replace("_", "\\_")
 }
 
-pub fn send_chat<T>(servers: Vec<Session>, message: T)
-where
-    T: ToString,
-{
-    let chat = replace_formatting(message.to_string());
+pub fn send_chat<T: ToString>(servers: &Vec<Session>, message: T) {
+    let chat = replace_formatting(message);
     // TODO replace formatting
-    for server in servers {
-        send_command(
-            server.name,
-            format!("tellraw @a {{ \"text\": \"{chat}\" }}"),
-        );
-    }
-}
-
-pub async fn join_parallel<T: Send + 'static>(
-    futs: impl IntoIterator<Item = impl Future<Output = T> + Send + 'static>,
-) -> Vec<T> {
-    let tasks: Vec<_> = futs.into_iter().map(tokio::spawn).collect();
-    // unwrap the Result because it is introduced by tokio::spawn()
-    // and isn't something our caller can handle
-    futures::future::join_all(tasks)
-        .await
-        .into_iter()
-        .map(Result::unwrap)
-        .collect()
+    servers.to_vec().into_iter().for_each(|x| {
+        send_command(&x.name, &format!(r#"tellraw @a {{ "text": "{chat}" }}"#));
+    });
 }
 
 // small function to send a command to the specific tmux session, this replaces new lines due to it
@@ -145,12 +125,7 @@ pub async fn join_parallel<T: Send + 'static>(
 // this is one of the limitations of this system, but it's not that bad because if there are
 // multiple lines you can send the command multiple times
 #[inline(always)]
-pub fn send_command<T>(server_name: T, message: T)
-where
-    T: ToString,
-{
-    let (message, server_name) = (message.to_string(), server_name.to_string());
-
+pub fn send_command(server_name: &str, message: &str) {
     let _ = Command::new("tmux")
         .args(["send-keys", "-t", &server_name, &message, "Enter"])
         .spawn();
@@ -162,11 +137,7 @@ where
 // delete the file if it exists before generating it
 // that can be used at startup or when just resetting the file in general
 #[inline]
-pub async fn gen_pipe<T>(server_name: T, rm: bool)
-where
-    T: ToString,
-{
-    let server_name = server_name.to_string();
+pub async fn gen_pipe(server_name: &str, rm: bool) {
     let pipe = format!("/tmp/{server_name}-taurus");
     if rm {
         // remove the old pipe file if it exists

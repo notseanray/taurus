@@ -5,6 +5,7 @@ mod config;
 mod utils;
 mod ws;
 use args::parse_args;
+use crate::utils::Sys;
 use backup::backup;
 use bridge::{gen_pipe, replace_formatting, set_lines, update_messages};
 use config::{Config, Session};
@@ -18,14 +19,7 @@ use std::{
 use tokio::sync::Mutex;
 use utils::{send_to_clients, Clients};
 use warp::Filter;
-use ws::ws_handler;
-
-lazy_static::lazy_static! {
-    static ref ARGS: Vec<String> = env::args().collect();
-    static ref PATH: String = ARGS[0].to_owned()[..ARGS[0].len() - 6].to_string();
-    static ref SESSIONS: Vec<Session> = Config::load_sessions(PATH.to_owned());
-}
-
+use ws::{PATH, ARGS, SESSIONS, ws_handler};
 #[tokio::main]
 async fn main() {
     let startup = Instant::now();
@@ -69,7 +63,7 @@ async fn main() {
         // TODO
         // add docker support for piping
         match i.host.as_str() {
-            "tmux" => gen_pipe(i.name.to_owned(), false).await,
+            "tmux" => gen_pipe(&i.name, false).await,
             _ => {}
         };
         tokio::time::sleep(Duration::from_millis((SESSIONS.len() * 10) as u64)).await;
@@ -85,23 +79,24 @@ async fn main() {
                     Some(v) => v,
                     None => continue,
                 };
-                if msg.len() < 8 {
-                    break;
+                if msg.len() > 8 {
+                    let key = key.to_string();
+                    // This is very janky and probably should be redone
+                    let _ = line_map.to_owned().remove_entry(&key);
+                    line_map.insert(key, line_count);
+                    response.push(msg);
                 }
-                let key = key.clone().to_string();
-                // This is very janky and probably should be redone
-                let _ = line_map.to_owned().remove_entry(&key);
-                line_map.insert(key, line_count);
-                response.push(msg);
             }
             let msg = &response.join("\n");
             replace_formatting(msg.to_owned());
-            send_to_clients(&clients.clone(), &format!("MSG {}", msg)).await;
+            send_to_clients(&clients, &format!("MSG {}", msg)).await;
             tokio::time::sleep(Duration::from_millis(250)).await;
         }
     });
 
     let mut clock: usize = 0;
+    let mut sys = Sys::new();
+    sys.refresh();
 
     tokio::spawn(async move {
         loop {
@@ -130,6 +125,7 @@ async fn main() {
                         e.file_path.unwrap(),
                         config.backup_location.to_owned(),
                         e.backup_interval.to_owned().unwrap(),
+                        &sys
                     );
                 }
             }

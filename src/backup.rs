@@ -1,7 +1,6 @@
-use crate::utils::{check_exist, reap, sys_health_check};
+use crate::utils::{check_exist, reap, Sys};
 use chrono::prelude::*;
 use std::{fs, process::Command, time::SystemTime};
-use sysinfo::{System, SystemExt};
 
 pub fn backup(
     args: Option<Vec<String>>,
@@ -9,6 +8,7 @@ pub fn backup(
     backup_dir: String,
     backup_store: String,
     btime: usize,
+    sys: &Sys
 ) -> String {
     // if either the directory we are attempting to backup, or the resulting location does not
     // exists then we can just return
@@ -138,6 +138,7 @@ Last Backup: {}s ago, Next Backup in: {}s```",
                 backup_store.to_owned(),
                 backup_dir.to_owned(),
                 keep_time.try_into().unwrap(),
+                sys
             );
         }
 
@@ -176,19 +177,14 @@ Last Backup: {}s ago, Next Backup in: {}s```",
         backup_store.to_owned(),
         backup_dir.to_owned(),
         keep_time.try_into().unwrap(),
+        sys
     );
 }
 
 // big function to handle all the backup processes
-fn new(backup_store: String, backup_dir: String, keep_time: u64) -> String {
-    // if it is not from the command, we know it's scheduled and therefore we can create a new
-    // archive and store it
-    let mut sys = System::new_all();
-    sys.refresh_disks_list();
-    sys.refresh_disks();
-
+fn new(backup_store: String, backup_dir: String, keep_time: u64, sys: &Sys) -> String {
     // check the disk to ensure that a backup is safe
-    if sys_health_check() {
+    if sys.sys_health_check() {
         return "unmet system constraints".to_string();
     }
 

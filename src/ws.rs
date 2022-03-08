@@ -1,13 +1,10 @@
 use crate::{
-    bridge::{join_parallel, replace_formatting, send_chat, send_command},
-    config::{Config, Session},
-    utils::{sys_check, sys_health_check, Clients, Result, WsClient},
+    bridge::{send_command, send_chat},
+    config::Config,
+    utils::{Clients, Result, WsClient, Sys},
 };
 use futures::{FutureExt, StreamExt};
-use std::{
-    env,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::{process::Command, sync::mpsc};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
@@ -15,18 +12,19 @@ use warp::{
     ws::{Message, WebSocket},
     Reply,
 };
+use std::env;
+use crate::Session;
 
 lazy_static::lazy_static! {
     static ref CONFIG_PATH: String = {
         let path: Vec<String> = env::args().collect();
         path[0][..path[0].len() - 6].to_string()
     };
-    static ref SESSIONS: Vec<Session> = {
-        Config::load_sessions(CONFIG_PATH.to_string())
-    };
+    pub static ref ARGS: Vec<String> = env::args().collect();
+    pub static ref PATH: String = ARGS[0].to_owned()[..ARGS[0].len() - 6].to_string();
+    pub static ref SESSIONS: Vec<Session> = Config::load_sessions(PATH.to_owned());
     static ref RESTART_SCRIPT: Option<String> = {
-        let config = Config::load_config(CONFIG_PATH.to_string());
-        config.restart_script
+        Config::load_config(CONFIG_PATH.to_string()).restart_script
     };
 }
 
@@ -37,7 +35,7 @@ pub async fn client_connection(ws: WebSocket, clients: Clients) {
     let client_rcv = UnboundedReceiverStream::new(client_rcv);
     tokio::task::spawn(client_rcv.forward(client_ws_sender).map(|result| {
         if let Err(e) = result {
-            println!("*warn: \x1b[33merror sending websocket msg: {}\x1b[0m", e);
+            println!("*warn: \x1b[33merror sending websocket msg: {e}\x1b[0m");
         }
     }));
     let uuid = Uuid::new_v4().to_simple().to_string();
@@ -50,11 +48,8 @@ pub async fn client_connection(ws: WebSocket, clients: Clients) {
         let msg = match result {
             Ok(msg) => msg,
             Err(e) => {
-                println!(
-                    "*warn: \x1b[33merror receiving message for id {}): {}\x1b[0m",
-                    uuid.clone(),
-                    e
-                );
+                println!("*warn: \x1b[33merror receiving \
+                message for id {uuid}): {e}\x1b[0m");
                 break;
             }
         };
@@ -65,19 +60,16 @@ pub async fn client_connection(ws: WebSocket, clients: Clients) {
 }
 
 async fn client_msg(client_id: &str, msg: Message, clients: &Clients) {
-    let response = handle_response(msg).await;
-    if response.is_none() {
-        return;
-    }
-
-    let locked = clients.lock().await;
-    match locked.get(client_id) {
-        Some(v) => {
-            if let Some(sender) = &v.sender {
-                let _ = sender.send(Ok(Message::text(response.unwrap())));
+    if let Some(response) = handle_response(msg).await {
+        let locked = clients.lock().await;
+        match locked.get(client_id) {
+            Some(v) => {
+                if let Some(sender) = &v.sender {
+                    let _ = sender.send(Ok(Message::text(response)));
+                }
             }
+            None => {}
         }
-        None => {}
     }
 }
 
@@ -112,22 +104,17 @@ async fn handle_response(msg: Message) -> Option<String> {
                 Some(v) => v,
                 None => return None,
             };
-            let chat = replace_formatting(in_game_message);
             // TODO
             // replace with tmux json + cleanse input
-            for server in &SESSIONS.to_vec() {
-                send_command(
-                    &server.name,
-                    &format!(r#"tellraw @a {{ "text": "{}" }}"#, chat),
-                );
-            }
+            send_chat(&SESSIONS.to_vec(), in_game_message);
             return None;
         }
         "CMD" => {
-            if command_index.is_none() {
-                return Some("invalid command".to_string());
-            }
-            let (target, cmd) = match get_cmd(&message[command_index.unwrap() + 1..]) {
+            let command_index = match command_index {
+                Some(v) => v,
+                None => return Some("invalid command".to_string())
+            };
+            let (target, cmd) = match get_cmd(&message[command_index + 1..]) {
                 Some(v) => v,
                 None => return None,
             };
@@ -160,15 +147,15 @@ async fn handle_response(msg: Message) -> Option<String> {
             };
 
             println!("*info: shell cmd {command}");
-            if args.is_some() {
-                let _ = Command::new(command).args(args.unwrap()).spawn();
-                return None;
-            }
-            let _ = Command::new(command).spawn();
+            let args = match args {
+                Some(v) => v,
+                None => &[]
+            };
+            let _ = Command::new(command).args(args).spawn();
             return None;
         }
-        "CHECK" => Some(sys_check()),
-        "HEARTBEAT" => Some(sys_health_check().to_string()),
+        "HEARTBEAT" => Some(format!("{}", Sys::new().sys_health_check())),
+        "CHECK" => Some(Sys::new().sys_check()),
         "PING" => {
             let time = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
