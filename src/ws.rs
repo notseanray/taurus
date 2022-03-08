@@ -1,9 +1,11 @@
+use crate::Session;
 use crate::{
-    bridge::{send_command, send_chat},
+    bridge::{send_chat, send_command},
     config::Config,
-    utils::{Clients, Result, WsClient, Sys},
+    utils::{Clients, Result, Sys, WsClient},
 };
 use futures::{FutureExt, StreamExt};
+use std::env;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::{process::Command, sync::mpsc};
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -12,8 +14,6 @@ use warp::{
     ws::{Message, WebSocket},
     Reply,
 };
-use std::env;
-use crate::Session;
 
 lazy_static::lazy_static! {
     static ref CONFIG_PATH: String = {
@@ -48,8 +48,10 @@ pub async fn client_connection(ws: WebSocket, clients: Clients) {
         let msg = match result {
             Ok(msg) => msg,
             Err(e) => {
-                println!("*warn: \x1b[33merror receiving \
-                message for id {uuid}): {e}\x1b[0m");
+                println!(
+                    "*warn: \x1b[33merror receiving \
+                message for id {uuid}): {e}\x1b[0m"
+                );
                 break;
             }
         };
@@ -112,7 +114,7 @@ async fn handle_response(msg: Message) -> Option<String> {
         "CMD" => {
             let command_index = match command_index {
                 Some(v) => v,
-                None => return Some("invalid command".to_string())
+                None => return Some("invalid command".to_string()),
             };
             let (target, cmd) = match get_cmd(&message[command_index + 1..]) {
                 Some(v) => v,
@@ -149,13 +151,13 @@ async fn handle_response(msg: Message) -> Option<String> {
             println!("*info: shell cmd {command}");
             let args = match args {
                 Some(v) => v,
-                None => &[]
+                None => &[],
             };
             let _ = Command::new(command).args(args).spawn();
             return None;
         }
         "HEARTBEAT" => Some(format!("{}", Sys::new().sys_health_check())),
-        "CHECK" => Some(Sys::new().sys_check()),
+        "CHECK" => Some(format!("{}", Sys::new())),
         "PING" => {
             let time = SystemTime::now()
                 .duration_since(UNIX_EPOCH)

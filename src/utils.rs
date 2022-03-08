@@ -1,4 +1,5 @@
 use libc::{c_int, pid_t};
+use std::fmt;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use sysinfo::{DiskExt, System, SystemExt};
 use tokio::sync::{mpsc, Mutex};
@@ -65,7 +66,7 @@ pub struct Sys {
     cpu_avg: (f32, f32),
     ram: (u64, u64),
     uptime: u64,
-    sys: System
+    sys: System,
 }
 
 impl Sys {
@@ -78,44 +79,17 @@ impl Sys {
             cpu_avg: Self::cpu_average(&sys),
             ram: Self::get_ram(&sys),
             uptime: Self::uptime(&sys),
-            sys
+            sys,
         }
     }
 
     pub fn refresh(&mut self) {
         let sys = &mut self.sys;
-        sys.refresh_all(); 
+        sys.refresh_all();
         self.disk = Self::check_disk(&sys);
         self.disk_info = Self::disk_info(&sys);
         self.cpu_avg = Self::cpu_average(&sys);
         self.uptime = Self::uptime(&sys);
-    }
-
-    pub fn sys_check(&self) -> String {
-        let mut response = String::new();
-        if self.disk.is_some() {
-            response.push_str(&format!(
-                "\\*warn: disk space low on drive index: {}",
-                self.disk.unwrap()
-            ));
-        }
-
-        response.push_str("disks: ");
-        for disk in &self.disk_info {
-            response.push_str(&format!(
-                "{} MiB / {} MiB {}%",
-                Sys::make_mb(disk.0),
-                Sys::make_mb(disk.1),
-                disk.2
-            ));
-        }
-
-        response.push_str(&format!("load average: {} cpu average: {}%\n\
-                                    system uptime: {} hrs", 
-                                   self.cpu_avg.0, 
-                                   self.cpu_avg.1,
-                                   self.uptime / 3600));
-        response
     }
 
     pub fn sys_health_check(&self) -> bool {
@@ -170,5 +144,35 @@ impl Sys {
             response.push((used, total, (used as f64 / total as f64) as f32));
         }
         response
+    }
+}
+
+impl fmt::Display for Sys {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut response = String::new();
+        if self.disk.is_some() {
+            response.push_str(&format!(
+                "\\*warn: disk space low on drive index: {}\n",
+                self.disk.unwrap()
+            ));
+        }
+        response.push_str("disks: \n");
+        for disk in &self.disk_info {
+            response.push_str(&format!(
+                "{} MiB / {} MiB {}%",
+                Sys::make_mb(disk.0),
+                Sys::make_mb(disk.1),
+                disk.2
+            ));
+        }
+
+        write!(
+            f,
+            "{response}\nload average: {} \n\
+        cpu average: {}% system uptime: {} hrs",
+            self.cpu_avg.0,
+            self.cpu_avg.1,
+            self.uptime / 3600
+        )
     }
 }

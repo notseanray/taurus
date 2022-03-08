@@ -8,7 +8,7 @@ pub fn backup(
     backup_dir: String,
     backup_store: String,
     btime: usize,
-    sys: &Sys
+    sys: &Sys,
 ) -> String {
     // if either the directory we are attempting to backup, or the resulting location does not
     // exists then we can just return
@@ -138,7 +138,7 @@ Last Backup: {}s ago, Next Backup in: {}s```",
                 backup_store.to_owned(),
                 backup_dir.to_owned(),
                 keep_time.try_into().unwrap(),
-                sys
+                sys,
             );
         }
 
@@ -177,7 +177,7 @@ Last Backup: {}s ago, Next Backup in: {}s```",
         backup_store.to_owned(),
         backup_dir.to_owned(),
         keep_time.try_into().unwrap(),
-        sys
+        sys,
     );
 }
 

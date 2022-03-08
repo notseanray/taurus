@@ -4,8 +4,8 @@ mod bridge;
 mod config;
 mod utils;
 mod ws;
-use args::parse_args;
 use crate::utils::Sys;
+use args::parse_args;
 use backup::backup;
 use bridge::{gen_pipe, replace_formatting, set_lines, update_messages};
 use config::{Config, Session};
@@ -19,7 +19,7 @@ use std::{
 use tokio::sync::Mutex;
 use utils::{send_to_clients, Clients};
 use warp::Filter;
-use ws::{PATH, ARGS, SESSIONS, ws_handler};
+use ws::{ws_handler, ARGS, PATH, SESSIONS};
 #[tokio::main]
 async fn main() {
     let startup = Instant::now();
@@ -125,7 +125,7 @@ async fn main() {
                         e.file_path.unwrap(),
                         config.backup_location.to_owned(),
                         e.backup_interval.to_owned().unwrap(),
-                        &sys
+                        &sys,
                     );
                 }
             }
