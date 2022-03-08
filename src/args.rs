@@ -1,4 +1,4 @@
-use crate::{exit, Config, Session};
+use crate::{exit, ws::PATH, Config, Session};
 use std::fs::{read_dir, remove_file};
 
 pub fn parse_args(args: Vec<String>) {
@@ -6,9 +6,8 @@ pub fn parse_args(args: Vec<String>) {
         return;
     }
     let parseable = args.iter().skip(1);
-    let path: String = args[0].to_owned()[..args[0].len() - 6].to_string();
-    for (e, i) in parseable.enumerate() {
-        match i.as_str() {
+    for (e, arg) in parseable.enumerate() {
+        match arg.as_str() {
             "help" => {
                 println!(
                     "valid arguments
@@ -19,8 +18,8 @@ pub fn parse_args(args: Vec<String>) {
                 exit!();
             }
             "check" => {
-                let _: Config = Config::load_config(path.clone());
-                let _: Vec<Session> = Config::load_sessions(path.to_owned());
+                let _: Config = Config::load_config(PATH.clone());
+                let _: Vec<Session> = Config::load_sessions(PATH.to_owned());
                 println!("*info: \x1b[32mcheck successful, exiting\x1b[0m");
                 exit!();
             }
@@ -36,7 +35,7 @@ example usage:
                     exit!();
                 }
 
-                let config = Config::load_config(path.clone());
+                let config = Config::load_config(PATH.clone());
                 match args[e + 1].as_str() {
                     "ls" => {
                         let mut backups = "backups: ".to_string();
@@ -89,7 +88,7 @@ example usage:
                 exit!();
             }
             _ => {
-                eprintln!("*warn: \x1b[33minvalid argument -> {}\x1b[0m", i);
+                eprintln!("*warn: \x1b[33minvalid argument -> {}\x1b[0m", arg);
                 println!("*info: \x1b[33mskipping argument \x1b[0m");
                 continue;
             }
