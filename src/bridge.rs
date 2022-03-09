@@ -1,7 +1,7 @@
 use crate::config::Session;
 use crate::{utils::check_exist, utils::reap};
 use regex::Regex;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use tokio::process::Command;
 
@@ -38,28 +38,24 @@ where
 
             let line = line.unwrap();
 
+            let raw = line.replace(|c: char| !c.is_ascii(), "");
+
             // if the line is too short then skip it
-            if &line.chars().count() < &35 {
+            if raw.len() < 35 || &raw[10..31] != " [Server thread/INFO]" {
                 continue;
             }
 
-            // check if the message starts with certain characters
-            let line_sep: &str = &line[33..];
-            if !line.starts_with("[") || (!line_sep.starts_with("<") && !line_sep.starts_with("§"))
+            let newline = &raw[33..];
+
+            if !(newline.contains("<") && newline.contains(">"))
+                && !(newline.contains("joined") || newline.contains("left"))
             {
                 continue;
             }
 
-            let newline = &line[33..];
-
             if newline.len() < 1 {
                 continue;
             }
-
-            // if it's not an in game command, we can generate what the discord message will be
-            //
-            // firstly we put the server name then the new line message, this is where replace
-            // formatting comes in to remove the special mc escape sequences
             let nmessage = format!("[{server_name}] {newline}\n");
 
             message.push_str(&nmessage);
@@ -106,17 +102,54 @@ where
     replacements.replace_all(&msg, "").to_owned().to_string();
     msg.replace("\n", "\\n")
         .replace("\r", "\\r")
-        .replace("\\", "\\\\")
         .replace("\"", "\\\"")
         .replace("_", "\\_")
 }
 
-pub fn send_chat<T: ToString>(servers: &Vec<Session>, message: T) {
-    let chat = replace_formatting(message);
-    // TODO replace formatting
-    servers.to_vec().into_iter().for_each(|x| {
-        send_command(&x.name, &format!(r#"tellraw @a {{ "text": "{chat}" }}"#));
-    });
+#[inline(always)]
+fn clear_formatting<T>(msg: T) -> Option<String>
+where
+    T: ToString,
+{
+    let msg = msg
+        .to_string()
+        .replace("\\", "")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("{", "{{")
+        .replace("}", "}}")
+        .replace("\"", "\\\"");
+    if msg.len() < 1 {
+        return None;
+    }
+    Some(msg)
+}
+
+pub fn send_chat<T>(servers: &Vec<Session>, message: T)
+where
+    T: ToString,
+{
+    let message = &message.to_string();
+    let lines: Vec<&str> = message.split("\n").collect();
+    for line in lines {
+        let line = &line.replace("MSG ", "");
+        let pos = match line.find("]") {
+            Some(v) => v,
+            None => 0,
+        };
+        // TODO replace formatting
+        for server in servers.to_vec() {
+            let name = server.name;
+            if pos != 0 && line[1..pos] == name {
+                continue;
+            }
+            let msg = match clear_formatting(line) {
+                Some(v) => v,
+                None => continue,
+            };
+            send_command(&name, &format!(r#"tellraw @a {{ "text": "{msg}" }}"#));
+        }
+    }
 }
 
 // small function to send a command to the specific tmux session, this replaces new lines due to it
@@ -138,15 +171,10 @@ pub fn send_command(server_name: &str, message: &str) {
 // that can be used at startup or when just resetting the file in general
 #[inline]
 pub async fn gen_pipe(server_name: &str, rm: bool) {
+    println!("PIPE {server_name}");
     let pipe = format!("/tmp/{server_name}-taurus");
     if rm {
-        // remove the old pipe file if it exists
-        if check_exist(&pipe) {
-            Command::new("rm")
-                .arg(&pipe)
-                .spawn()
-                .expect("*error: \x1b[31mfailed to delete pipe file\x1b[0m");
-        }
+        let _ = fs::remove_file(&pipe);
     }
 
     // create the tmux command that will be entered to set the pipe

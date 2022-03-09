@@ -123,7 +123,7 @@ impl Config {
 
         let mut sessions = Vec::new();
 
-        for i in fs::read_dir(path.to_owned() + "/servers/")
+        for i in fs::read_dir(path.to_owned() + "servers/")
             .expect("*error: \x1b[31mfailed to read server directory\x1b[0m")
         {
             let i = i.unwrap();

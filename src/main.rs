@@ -4,7 +4,7 @@ mod bridge;
 mod config;
 mod utils;
 mod ws;
-use crate::utils::Sys;
+use crate::{bridge::send_chat, utils::Sys};
 use args::parse_args;
 use backup::backup;
 use bridge::{gen_pipe, replace_formatting, set_lines, update_messages};
@@ -52,47 +52,55 @@ async fn main() {
 
     let mut line_map = HashMap::new();
 
-    for i in &SESSIONS.to_owned() {
-        if i.game.is_none() {
+    for session in &SESSIONS.to_owned() {
+        let name = &session.name;
+        if session.game.is_none() {
             println!(
-                "*warn: \x1b[33mno game sessions detected in {}.json, continuing anyway\x1b[0m",
-                i.name
+                "*warn: \x1b[33mno game sessions detected in {name}.json, continuing anyway\x1b[0m"
             );
             continue;
         }
+        println!("{:?}", session);
         // TODO
         // add docker support for piping
-        match i.host.as_str() {
-            "tmux" => gen_pipe(&i.name, false).await,
+        match session.host.as_str() {
+            "tmux" => gen_pipe(&session.name, false).await,
             _ => {}
         };
         tokio::time::sleep(Duration::from_millis((SESSIONS.len() * 10) as u64)).await;
-        line_map.insert(i.name.to_owned(), set_lines(i.name.to_owned()));
+        line_map.insert(name.to_string(), set_lines(name));
     }
 
-    tokio::spawn(async move {
-        loop {
-            let mut response = Vec::new();
-            for (key, value) in line_map.clone().iter() {
-                let (msg, line_count) = update_messages(key.to_owned(), *value).await;
-                let msg = match msg {
-                    Some(v) => v,
-                    None => continue,
-                };
-                if msg.len() > 8 {
-                    let key = key.to_string();
-                    // This is very janky and probably should be redone
-                    let _ = line_map.to_owned().remove_entry(&key);
-                    line_map.insert(key, line_count);
-                    response.push(msg);
+    if SESSIONS.len() > 0 {
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_millis(250)).await;
+                let mut response = Vec::new();
+                for (key, value) in line_map.clone().iter() {
+                    let (msg, line_count) = update_messages(key.to_owned(), *value).await;
+                    let msg = match msg {
+                        Some(v) => v,
+                        None => continue,
+                    };
+                    if msg.len() > 8 {
+                        let key = key.to_string();
+                        // This is very janky and probably should be redone
+                        let _ = line_map.to_owned().remove_entry(&key);
+                        line_map.insert(key, line_count);
+                        response.push(msg);
+                    }
                 }
+                let collected = &response.join("\n");
+                if collected.len() < 1 {
+                    continue;
+                }
+                let msg = format!("MSG {}", &collected);
+                replace_formatting(msg.to_owned());
+                send_chat(&SESSIONS, &msg);
+                send_to_clients(&clients, &msg[..msg.len() - 1]).await;
             }
-            let msg = &response.join("\n");
-            replace_formatting(msg.to_owned());
-            send_to_clients(&clients, &format!("MSG {}", msg)).await;
-            tokio::time::sleep(Duration::from_millis(250)).await;
-        }
-    });
+        });
+    }
 
     let mut clock: usize = 0;
     let mut sys = Sys::new();
@@ -100,6 +108,7 @@ async fn main() {
 
     tokio::spawn(async move {
         loop {
+            tokio::time::sleep(Duration::from_secs(1)).await;
             clock += 1;
             for i in &SESSIONS.to_owned() {
                 if i.game.is_none() || i.game.to_owned().unwrap().backup_interval.is_none() {
@@ -129,7 +138,6 @@ async fn main() {
                     );
                 }
             }
-            tokio::time::sleep(Duration::from_millis(1000)).await;
         }
     });
 
