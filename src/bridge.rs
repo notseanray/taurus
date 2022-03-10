@@ -64,7 +64,7 @@ where
 
     // if the lines are under 2k, we don't need to replace the file since it doesn't take much time
     // to process in the first place
-    if lines < 2000 {
+    if cur_line < 2000 {
         return (Some(message), cur_line);
     }
 
