@@ -63,7 +63,9 @@ where
     }
     // if the lines are under 2k, we don't need to replace the file since it doesn't take much time
     // to process in the first place
-    if cur_line < 4000 { return (Some(message), cur_line); }
+    if cur_line < 4000 {
+        return (Some(message), cur_line);
+    }
 
     // if it is above 2k however, we can reset the pipe and notify the to the console
     gen_pipe(&server_name, true).await;
@@ -84,7 +86,7 @@ pub fn set_lines<T: ToString>(server_name: T) -> usize {
 }
 
 #[inline(always)]
-pub fn replace_formatting<T: ToString>(msg: T) -> impl ToString<> {
+pub fn replace_formatting<T: ToString>(msg: T) -> impl ToString {
     let msg = msg.to_string();
     // TODO MORE REGEX
     // regex to replace any '§' followed by digits with a blank space
@@ -130,7 +132,10 @@ pub fn send_chat<T: ToString>(servers: &Vec<Session>, message: T) {
                 Some(v) => v,
                 None => continue,
             };
-            send_command(&name, &format!(r#"tellraw @a {{ "text": "{}" }}"#, msg.to_string()));
+            send_command(
+                &name,
+                &format!(r#"tellraw @a {{ "text": "{}" }}"#, msg.to_string()),
+            );
         }
     }
 }

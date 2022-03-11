@@ -82,10 +82,10 @@ async fn main() {
                         Some(v) => v,
                         None => continue,
                     };
-                        let key = key.to_string();
-                        // This is very janky and probably should be redone
-                        let _ = line_map.to_owned().remove_entry(&key);
-                        line_map.insert(key, line_count);
+                    let name = key.to_string();
+                    // This is very janky and probably should be redone
+                    let _ = line_map.to_owned().remove_entry(&name);
+                    line_map.insert(name, line_count);
                     if msg.len() > 8 {
                         response.push(msg);
                     }
