@@ -61,27 +61,20 @@ where
             message.push_str(&nmessage);
         }
     }
-
     // if the lines are under 2k, we don't need to replace the file since it doesn't take much time
     // to process in the first place
-    if cur_line < 2000 {
-        return (Some(message), cur_line);
-    }
+    if cur_line < 4000 { return (Some(message), cur_line); }
 
     // if it is above 2k however, we can reset the pipe and notify the to the console
     gen_pipe(&server_name, true).await;
     println!("*info: pipe file reset -> {server_name}");
-
     // return new line count to update the one in the main file
     (None, 0)
 }
 
 // checks the number of lines in the log file to set them initially, this prevents old messages
 // from being spat out if the bot restarts (and makes it a lot less annoying)
-pub fn set_lines<T>(server_name: T) -> usize
-where
-    T: ToString,
-{
+pub fn set_lines<T: ToString>(server_name: T) -> usize {
     let server_name = server_name.to_string();
     let file = File::open(&format!("/tmp/{server_name}-taurus")).unwrap();
     let reader = BufReader::new(file);
@@ -91,10 +84,7 @@ where
 }
 
 #[inline(always)]
-pub fn replace_formatting<T>(msg: T) -> String
-where
-    T: ToString,
-{
+pub fn replace_formatting<T: ToString>(msg: T) -> impl ToString<> {
     let msg = msg.to_string();
     // TODO MORE REGEX
     // regex to replace any '§' followed by digits with a blank space
@@ -107,12 +97,8 @@ where
 }
 
 #[inline(always)]
-fn clear_formatting<T>(msg: T) -> Option<String>
-where
-    T: ToString,
-{
+fn clear_formatting(msg: &str) -> Option<String> {
     let msg = msg
-        .to_string()
         .replace("\\", "")
         .replace("\n", "\\n")
         .replace("\r", "\\r")
@@ -125,10 +111,7 @@ where
     Some(msg)
 }
 
-pub fn send_chat<T>(servers: &Vec<Session>, message: T)
-where
-    T: ToString,
-{
+pub fn send_chat<T: ToString>(servers: &Vec<Session>, message: T) {
     let message = &message.to_string();
     let lines: Vec<&str> = message.split("\n").collect();
     for line in lines {
@@ -147,7 +130,7 @@ where
                 Some(v) => v,
                 None => continue,
             };
-            send_command(&name, &format!(r#"tellraw @a {{ "text": "{msg}" }}"#));
+            send_command(&name, &format!(r#"tellraw @a {{ "text": "{}" }}"#, msg.to_string()));
         }
     }
 }
@@ -171,7 +154,6 @@ pub fn send_command(server_name: &str, message: &str) {
 // that can be used at startup or when just resetting the file in general
 #[inline]
 pub async fn gen_pipe(server_name: &str, rm: bool) {
-    println!("PIPE {server_name}");
     let pipe = format!("/tmp/{server_name}-taurus");
     if rm {
         let _ = fs::remove_file(&pipe);
