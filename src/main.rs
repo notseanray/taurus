@@ -60,7 +60,6 @@ async fn main() {
             );
             continue;
         }
-        println!("{:?}", session);
         // TODO
         // add docker support for piping
         match session.host.as_str() {
@@ -95,7 +94,7 @@ async fn main() {
                     continue;
                 }
                 let msg = format!("MSG {}", &collected);
-                replace_formatting(msg.to_owned());
+                replace_formatting(&msg);
                 send_chat(&SESSIONS, &msg);
                 send_to_clients(&clients, &msg[..msg.len() - 1]).await;
             }

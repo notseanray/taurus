@@ -23,9 +23,7 @@ lazy_static::lazy_static! {
     pub static ref ARGS: Vec<String> = env::args().collect();
     pub static ref PATH: String = ARGS[0].to_owned()[..ARGS[0].len() - 6].to_string();
     pub static ref SESSIONS: Vec<Session> = Config::load_sessions(PATH.to_owned());
-    static ref RESTART_SCRIPT: Option<String> = {
-        Config::load_config(CONFIG_PATH.to_string()).restart_script
-    };
+    static ref RESTART_SCRIPT: Option<String> = Config::load_config(CONFIG_PATH.to_string()).restart_script;
 }
 
 pub async fn client_connection(ws: WebSocket, clients: Clients) {

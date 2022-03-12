@@ -3,6 +3,7 @@ use serde_derive::Deserialize;
 use serde_json::from_str;
 use std::{fs, fs::File};
 
+// main config
 #[derive(Deserialize)]
 pub struct Config {
     pub ws_ip: String,
@@ -13,7 +14,9 @@ pub struct Config {
     pub recompile_directory: Option<String>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+// for any optional scripts, if either interval or absolute is 0 then we will use the non zero
+// file, otherwise the script never gets executed.
+#[derive(Deserialize)]
 pub struct Script {
     pub description: String,
     pub interval: u64,
@@ -22,16 +25,18 @@ pub struct Script {
     pub mc_cmd: String,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+// store configuration for each session, description is purely for telling what it is
+#[derive(Deserialize, Clone)]
 pub struct Session {
     pub name: String,
-    pub description: String,
+    pub description: Option<String>,
     pub host: String,
     pub game: Option<Game>,
     pub rcon: Option<Rcon>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+// options for a session running a server that contains a chat bridge
+#[derive(Deserialize, Clone)]
 pub struct Game {
     pub file_path: Option<String>,
     pub backup_interval: Option<usize>,
@@ -40,7 +45,8 @@ pub struct Game {
     pub lines: Option<usize>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+// The ip being None defaults to localhost
+#[derive(Deserialize, Clone)]
 pub struct Rcon {
     pub ip: Option<String>,
     pub port: u64,
@@ -48,10 +54,7 @@ pub struct Rcon {
 }
 
 impl Config {
-    pub fn load_config<T>(path: T) -> Config
-    where
-        T: ToString,
-    {
+    pub fn load_config<T: ToString>(path: T) -> Config {
         let path = path.to_string();
         let config_path = &(path.to_owned() + "/config.json");
         if !check_exist(config_path) {
