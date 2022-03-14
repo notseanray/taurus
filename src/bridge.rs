@@ -22,7 +22,9 @@ pub async fn update_messages<T: ToString>(server_name: T, lines: usize) -> (Opti
 
     // Read the file line by line using the lines() iterator from std::io::BufRead.
     for (i, line) in reader.lines().enumerate() {
-        if i < cur_line { continue; }
+        if i < cur_line {
+            continue;
+        }
         cur_line = i;
         // filter out non ascii to prevent potential panics, alternatively I should just split the
         // lines into chars then use the index of that but we should not have to index string
@@ -30,7 +32,9 @@ pub async fn update_messages<T: ToString>(server_name: T, lines: usize) -> (Opti
         let raw = line.unwrap().replace(|c: char| !c.is_ascii(), "");
 
         // we only care about the line if it's a server 'info' message
-        if raw.len() < 35 || &raw[10..31] != " [Server thread/INFO]" { continue; }
+        if raw.len() < 35 || &raw[10..31] != " [Server thread/INFO]" {
+            continue;
+        }
 
         let newline = &raw[33..];
 
@@ -91,7 +95,7 @@ fn clear_formatting(msg: &str) -> Option<String> {
         .replace("\"", "\\\"");
     match msg.len() {
         1.. => Some(msg),
-        _ => None
+        _ => None,
     }
 }
 
@@ -113,10 +117,7 @@ pub fn send_chat(servers: &Vec<Session>, message: &str) {
             if pos != 0 && line[1..pos] == name || server.game.is_none() {
                 continue;
             }
-            send_command(
-                &name,
-                &format!(r#"tellraw @a {{ "text": "{}" }}"#, msg),
-            );
+            send_command(&name, &format!(r#"tellraw @a {{ "text": "{}" }}"#, msg));
         }
     }
 }
