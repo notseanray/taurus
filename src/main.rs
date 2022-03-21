@@ -5,6 +5,7 @@ mod config;
 mod utils;
 mod ws;
 use crate::{bridge::send_chat, utils::Sys};
+use regex::Regex;
 use args::parse_args;
 use backup::backup;
 use bridge::{gen_pipe, replace_formatting, set_lines, update_messages};
@@ -72,11 +73,12 @@ async fn main() {
 
     if SESSIONS.len() > 0 {
         tokio::spawn(async move {
+            let parse_pattern = Regex::new(r"^\[\d{2}:\d{2}:\d{2}\] \[Server thread/INFO\]: (<.*|[\w ]+ (joined|left) the game)$").unwrap();
             loop {
                 tokio::time::sleep(Duration::from_millis(250)).await;
                 let mut response = Vec::new();
                 for (key, value) in line_map.clone().iter() {
-                    let (msg, line_count) = update_messages(key.to_owned(), *value).await;
+                    let (msg, line_count) = update_messages(key.to_owned(), *value, &parse_pattern).await;
                     let msg = match msg {
                         Some(v) => v,
                         None => continue,
