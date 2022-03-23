@@ -12,7 +12,7 @@ pub fn backup(
 ) -> String {
     // if either the directory we are attempting to backup, or the resulting location does not
     // exists then we can just return
-    if !check_exist(&backup_dir.to_owned()) || !check_exist(&backup_store.to_owned()) {
+    if !check_exist(&backup_dir) || !check_exist(&backup_store) {
         eprintln!(
             "*error: please check your config! either backup directory or backup store is invalid!"
         );
@@ -26,7 +26,7 @@ pub fn backup(
         // the names and iterate through the files in the backup directory
         //
         // it's quite nice to have the backup size in the folder name so we add that as an element
-        if args.to_owned().contains(&"ls".to_owned()) {
+        if args.contains(&"ls".to_string()) {
             let mut backupn: Vec<u64> = Vec::new();
 
             let mut youngest = keep_time as u64;
@@ -97,7 +97,7 @@ Last Backup: {}s ago, Next Backup in: {}s```",
     if args.is_some() {
         let args = args.unwrap();
 
-        if args.to_owned().contains(&"rm".to_owned()) {
+        if args.to_owned().contains(&"rm".to_string()) {
             let args = args.to_owned();
 
             let mut index = 0;
@@ -120,7 +120,7 @@ Last Backup: {}s ago, Next Backup in: {}s```",
             let path = format!("{}/taurus-{}", backup_store, args[index + 1]);
 
             // check if it exists, if it doesn't then we must say that otherwise we can continue
-            if !check_exist(&path.to_owned()) {
+            if !check_exist(&path.to_string()) {
                 return "*error: location does not exist on file system".to_string();
             }
 
@@ -133,7 +133,7 @@ Last Backup: {}s ago, Next Backup in: {}s```",
         }
 
         // schedule the creation of a new backup
-        if args.to_owned().contains(&"new".to_owned()) {
+        if args.to_owned().contains(&"new".to_string()) {
             return new(
                 backup_store.to_owned(),
                 backup_dir.to_owned(),

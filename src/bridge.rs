@@ -1,25 +1,35 @@
 use crate::config::Session;
+use std::ops::Deref;
 use crate::{utils::check_exist, utils::reap};
 use regex::Regex;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use tokio::process::Command;
 
+pub struct Bridge {
+    pub name: String,
+    pub line: usize 
+}
+
 // poll the log file and check for new messages, match them against a certain pattern to dermine if
 // we need to send anything to the clients
-pub async fn update_messages<T: ToString>(server_name: T, lines: usize, pattern: &Regex) -> (Option<String>, usize) {
-    let server_name = server_name.to_string();
+pub async fn update_messages<T>(server_name: T, lines: usize, pattern: &Regex) -> (Option<String>, usize) 
+    where 
+        T: Deref<Target=str> + std::fmt::Display 
+{
     let file_path: String = format!("/tmp/{server_name}-taurus");
-    if !check_exist(&file_path.to_owned()) {
-        //gen_pipe(&server_name, false).await;
+    if !check_exist(&file_path) {
+        gen_pipe(&server_name, false).await;
         return (None, 0);
     }
 
     let reader = BufReader::new(File::open(&file_path).unwrap());
     let mut message = String::new();
     let mut cur_line: usize = lines;
+    let mut actual_line: usize = 0;
 
     for (i, line) in reader.lines().enumerate() {
+        actual_line = i;
         if i <= cur_line {
             continue;
         }
@@ -37,8 +47,11 @@ pub async fn update_messages<T: ToString>(server_name: T, lines: usize, pattern:
             message.push_str(&format!("[{server_name}] {new_line}\n"));
         }
     }
+    if actual_line < lines {
+        cur_line = actual_line;
+    }
     // if the log file is above 8k we can reset it to prevent parsing time from building up
-    if cur_line < 8000 {
+    if cur_line <= 12 {
         return (Some(message), cur_line);
     }
 

@@ -4,7 +4,7 @@ mod bridge;
 mod config;
 mod utils;
 mod ws;
-use crate::{bridge::send_chat, utils::Sys};
+use crate::{bridge::{send_chat, Bridge}, utils::Sys};
 use regex::Regex;
 use args::parse_args;
 use backup::backup;
@@ -51,9 +51,9 @@ async fn main() {
         }
     }
 
-    let mut line_map = HashMap::new();
+    let mut line_map = Vec::new();
 
-    for session in &SESSIONS.to_owned() {
+    for session in &SESSIONS.to_vec() {
         let name = &session.name;
         if session.game.is_none() {
             println!(
@@ -68,7 +68,11 @@ async fn main() {
             _ => {}
         };
         tokio::time::sleep(Duration::from_millis((SESSIONS.len() * 10) as u64)).await;
-        line_map.insert(name.to_string(), set_lines(name));
+        //line_map.insert(name.to_string(), set_lines(name));
+        line_map.push(Bridge {
+            name: name.to_string(),
+            line: set_lines(&name)
+        });
     }
 
     if SESSIONS.len() > 0 {
@@ -77,16 +81,13 @@ async fn main() {
             loop {
                 tokio::time::sleep(Duration::from_millis(250)).await;
                 let mut response = Vec::new();
-                for (key, value) in line_map.clone().iter() {
-                    let (msg, line_count) = update_messages(key.to_owned(), *value, &parse_pattern).await;
+                for session in line_map.iter_mut() {
+                    let (msg, line_count) = update_messages(session.name.to_owned(), session.line, &parse_pattern).await;
                     let msg = match msg {
                         Some(v) => v,
                         None => continue,
                     };
-                    let name = key.to_string();
-                    // This is very janky and probably should be redone
-                    let _ = line_map.to_owned().remove_entry(&name);
-                    line_map.insert(name, line_count);
+                    session.line = line_count;
                     if msg.len() > 8 {
                         response.push(msg);
                     }

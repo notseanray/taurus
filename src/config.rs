@@ -1,4 +1,5 @@
 use crate::{exit, utils::check_exist};
+use std::ops::Deref;
 use serde_derive::Deserialize;
 use serde_json::from_str;
 use std::{fs, fs::File};
@@ -54,10 +55,13 @@ pub struct Rcon {
 }
 
 impl Config {
-    pub fn load_config<T: ToString>(path: T) -> Config {
+    pub fn load_config<T>(path: T) -> Config 
+            where 
+                T: Deref<Target=str> + std::fmt::Display 
+        {
         let path = path.to_string();
         let config_path = &(path.to_owned() + "/config.json");
-        if !check_exist(config_path) {
+        if !check_exist(&config_path.as_str()) {
             Config::default(path.to_owned());
             Config::default_root_cfg(path.to_owned());
         }
@@ -69,7 +73,7 @@ impl Config {
                 eprintln!("*error: \x1b[31m{}\x1b[0m", e);
                 eprintln!("*info: generating default config");
                 Config::default_root_cfg(path.to_owned());
-                if !check_exist(config_path) {
+                if !check_exist(&config_path.as_str()) {
                     eprintln!(
                         "*fatal: \x1b[31mcould not read just generated config, exiting\x1b[0m"
                     );

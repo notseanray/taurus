@@ -1,4 +1,5 @@
 use libc::{c_int, pid_t};
+use std::ops::Deref;
 use std::fmt;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use sysinfo::{DiskExt, System, SystemExt};
@@ -35,17 +36,14 @@ pub fn reap() {
 
 // function to check if the file or folder exist
 #[inline]
-pub fn check_exist<T>(dir: T) -> bool
-where
-    T: ToString,
-{
+pub fn check_exist(dir: &str) -> bool {
     let current_path = PathBuf::from(dir.to_string());
     return current_path.exists();
 }
 
 pub async fn send_to_clients<T>(clients: &Clients, msg: T)
-where
-    T: ToString,
+    where 
+        T: Deref<Target=str> + std::fmt::Display 
 {
     let locked = clients.lock().await;
     for (key, _) in locked.iter() {
