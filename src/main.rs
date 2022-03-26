@@ -67,7 +67,8 @@ async fn main() {
             "tmux" => gen_pipe(&session.name, false).await,
             _ => {}
         };
-        tokio::time::sleep(Duration::from_millis((SESSIONS.len() * 10) as u64)).await;
+        // Wait for tmux to generate the pipe
+        tokio::time::sleep(Duration::from_millis(10)).await;
         //line_map.insert(name.to_string(), set_lines(name));
         line_map.push(Bridge {
             name: name.to_string(),
@@ -83,23 +84,20 @@ async fn main() {
                 let mut response = Vec::new();
                 for session in line_map.iter_mut() {
                     let (msg, line_count) = update_messages(session.name.to_owned(), session.line, &parse_pattern).await;
+                    session.line = line_count;
                     let msg = match msg {
                         Some(v) => v,
                         None => continue,
                     };
-                    session.line = line_count;
-                    if msg.len() > 8 {
-                        response.push(msg);
-                    }
+                    response.push(msg);
                 }
                 let collected = &response.join("\n");
-                if collected.len() < 1 {
-                    continue;
+                if collected.len() > 1 {
+                    let msg = format!("MSG {}", &collected);
+                    replace_formatting(&msg);
+                    send_chat(&SESSIONS, &msg);
+                    send_to_clients(&clients, &msg[..msg.len() - 1]).await;
                 }
-                let msg = format!("MSG {}", &collected);
-                replace_formatting(&msg);
-                send_chat(&SESSIONS, &msg);
-                send_to_clients(&clients, &msg[..msg.len() - 1]).await;
             }
         });
     }

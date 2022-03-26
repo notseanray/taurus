@@ -22,43 +22,40 @@ pub async fn update_messages<T>(server_name: T, lines: usize, pattern: &Regex) -
         gen_pipe(&server_name, false).await;
         return (None, 0);
     }
-
-    let reader = BufReader::new(File::open(&file_path).unwrap());
+    let reader = BufReader::new(File::open(file_path).unwrap());
     let mut message = String::new();
     let mut cur_line: usize = lines;
-    let mut actual_line: usize = 0;
-
     for (i, line) in reader.lines().enumerate() {
-        actual_line = i;
-        if i <= cur_line {
-            continue;
+        // assign the real number of lines, if the file is empty lines returns 0 by default
+        // if there is 1 line, there is still 0 lines due to it being 0 indexed
+        let real = i + 1;
+        if real > cur_line {
+            let line = line.unwrap_or(String::from(""));
+            cur_line = real;
+            if !pattern.is_match(&line) {
+                continue;
+            }
+            // prevent potential panics from attempting to index weird unicode
+            let mut message_out = String::new();
+            let message_chars = line.chars().collect::<Vec<char>>();
+            message_chars.iter().for_each(|c| message_out.push(*c));
+            message.push_str(&format!("[{server_name}] {}\n", &message_out[33..]));
         }
-        cur_line = i;
-        // filter out non ascii to prevent potential panics, alternatively I should just split the
-        // lines into chars then use the index of that but we should not have to index string
-        // contents that contains non ascii if it is going to be sent to the chat bridge clients
-        let raw = line.unwrap().replace(|c: char| !c.is_ascii(), "");
-
-        if !pattern.is_match(&raw) {
-            continue;
-        }
-        let new_line = &raw[33..];
-        if new_line.len() > 1 {
-            message.push_str(&format!("[{server_name}] {new_line}\n"));
-        }
-    }
-    if actual_line < lines {
-        cur_line = actual_line;
     }
     // if the log file is above 8k we can reset it to prevent parsing time from building up
-    if cur_line <= 12 {
-        return (Some(message), cur_line);
+    if cur_line > 8000 {
+        // reset pipe file and notify
+        gen_pipe(&server_name, true).await;
+        println!("*info: pipe file reset -> {server_name}");
+        return match message.len() {
+            3.. => (Some(message), 0),
+            _ => (None, 0)
+        };
     }
-
-    // reset pipe file and notify
-    gen_pipe(&server_name, true).await;
-    println!("*info: pipe file reset -> {server_name}");
-    (None, 0)
+    match message.len() {
+        3.. => (Some(message), cur_line),
+        _ => (None, cur_line)
+    }
 }
 
 // set the initial hashmap value of lines so only new lines are sent
