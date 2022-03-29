@@ -5,8 +5,8 @@ mod config;
 mod utils;
 mod ws;
 use crate::{
-    bridge::{Session, Bridge},
-    utils::Sys,
+    bridge::{Bridge, Session},
+    utils::Sys
 };
 use args::parse_args;
 use backup::backup;
@@ -97,14 +97,15 @@ async fn main() {
                     response.push(msg);
                 }
                 let collected = &response.join("\n");
-                if collected.len() < 1 { continue; }
+                if collected.len() < 1 {
+                    continue;
+                }
                 let msg = format!("MSG {}", &collected);
                 replace_formatting(&msg);
                 Session::send_chat_to_clients(&SESSIONS, &msg);
                 let lock = clients.clone();
                 for (_, client) in lock.lock().await.iter() {
                     client.send(&msg[..msg.len() - 1]).await;
-            
                 }
             }
         });

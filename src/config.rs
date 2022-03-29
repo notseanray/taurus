@@ -1,4 +1,4 @@
-use crate::{exit, utils::check_exist, bridge::Session};
+use crate::{bridge::Session, exit, utils::check_exist};
 use serde_derive::Deserialize;
 use serde_json::from_str;
 use std::ops::Deref;

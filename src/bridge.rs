@@ -1,10 +1,14 @@
-use crate::{utils::check_exist, utils::reap, config::{Game, Rcon}};
+use crate::{
+    config::{Game, Rcon},
+    utils::check_exist,
+    utils::reap
+};
 use regex::Regex;
+use serde_derive::Deserialize;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::ops::Deref;
 use tokio::process::Command;
-use serde_derive::Deserialize;
 
 pub struct Bridge {
     pub name: String,
@@ -84,7 +88,6 @@ pub fn replace_formatting(msg: &str) -> impl ToString {
         .replace("_", "\\_")
 }
 
-
 // generate the tmux pipe to the tmux session and attempt to remove it if needed
 #[inline]
 pub async fn gen_pipe(server_name: &str, rm: bool) {
@@ -130,7 +133,10 @@ impl Session {
             if pos != 0 && line[1..pos] == self.name || self.game.is_none() {
                 continue;
             }
-            Self::send_command(&self.name, &format!(r#"tellraw @a {{ "text": "{}" }}"#, msg));
+            Self::send_command(
+                &self.name,
+                &format!(r#"tellraw @a {{ "text": "{}" }}"#, msg),
+            );
         }
     }
 
