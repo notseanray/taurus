@@ -1,6 +1,6 @@
 #!/bin/bash
 mkdir taurus && cd taurus
-git clone https://github.com/NotCreative21/taurus.git
+git clone --depth=1 https://github.com/NotCreative21/taurus.git
 mv taurus build
 cd build
 cargo build --release
