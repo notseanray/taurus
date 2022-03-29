@@ -1,5 +1,4 @@
 use libc::{c_int, pid_t};
-use std::ops::Deref;
 use std::fmt;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use sysinfo::{DiskExt, System, SystemExt};
@@ -40,21 +39,11 @@ pub fn check_exist(dir: &str) -> bool {
     let current_path = PathBuf::from(dir.to_string());
     return current_path.exists();
 }
-
-pub async fn send_to_clients<T>(clients: &Clients, msg: T)
-    where 
-        T: Deref<Target=str> + std::fmt::Display 
-{
-    let locked = clients.lock().await;
-    for (key, _) in locked.iter() {
-        match locked.get(key) {
-            Some(t) => {
-                if let Some(t) = &t.sender {
-                    let _ = t.send(Ok(Message::text(msg.to_string().clone())));
-                }
-            }
-            None => continue,
-        };
+impl WsClient {
+    pub async fn send<'a, T: Into<String>>(&self, msg: T) {
+        if let Some(v) = &self.sender {
+            let _ = v.send(Ok(Message::text(msg)));
+        }
     }
 }
 

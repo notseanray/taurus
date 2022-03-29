@@ -1,7 +1,7 @@
-use crate::{exit, utils::check_exist};
-use std::ops::Deref;
+use crate::{exit, utils::check_exist, bridge::Session};
 use serde_derive::Deserialize;
 use serde_json::from_str;
+use std::ops::Deref;
 use std::{fs, fs::File};
 
 // main config
@@ -26,16 +26,6 @@ pub struct Script {
     pub mc_cmd: String,
 }
 
-// store configuration for each session, description is purely for telling what it is
-#[derive(Deserialize, Clone)]
-pub struct Session {
-    pub name: String,
-    pub description: Option<String>,
-    pub host: String,
-    pub game: Option<Game>,
-    pub rcon: Option<Rcon>,
-}
-
 // options for a session running a server that contains a chat bridge
 #[derive(Deserialize, Clone)]
 pub struct Game {
@@ -55,10 +45,10 @@ pub struct Rcon {
 }
 
 impl Config {
-    pub fn load_config<T>(path: T) -> Config 
-            where 
-                T: Deref<Target=str> + std::fmt::Display 
-        {
+    pub fn load_config<T>(path: T) -> Config
+    where
+        T: Deref<Target = str> + std::fmt::Display,
+    {
         let path = path.to_string();
         let config_path = &(path.to_owned() + "/config.json");
         if !check_exist(&config_path.as_str()) {

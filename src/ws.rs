@@ -1,6 +1,5 @@
-use crate::Session;
 use crate::{
-    bridge::{send_chat, send_command},
+    bridge::Session,
     config::Config,
     utils::{Clients, Result, Sys, WsClient},
 };
@@ -106,7 +105,7 @@ async fn handle_response(msg: Message) -> Option<String> {
             };
             // TODO
             // replace with tmux json + cleanse input
-            send_chat(&SESSIONS.to_vec(), in_game_message);
+            Session::send_chat_to_clients(&SESSIONS, in_game_message);
             return None;
         }
         "CMD" => {
@@ -118,8 +117,7 @@ async fn handle_response(msg: Message) -> Option<String> {
                 Some(v) => v,
                 None => return None,
             };
-            println!("{}={}", target, cmd);
-            send_command(target, cmd);
+            Session::send_command(&target, &cmd);
             return None;
         }
         "RESTART" => {

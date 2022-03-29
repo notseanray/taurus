@@ -1,21 +1,25 @@
-use crate::config::Session;
-use std::ops::Deref;
-use crate::{utils::check_exist, utils::reap};
+use crate::{utils::check_exist, utils::reap, config::{Game, Rcon}};
 use regex::Regex;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
+use std::ops::Deref;
 use tokio::process::Command;
+use serde_derive::Deserialize;
 
 pub struct Bridge {
     pub name: String,
-    pub line: usize 
+    pub line: usize,
 }
 
 // poll the log file and check for new messages, match them against a certain pattern to dermine if
 // we need to send anything to the clients
-pub async fn update_messages<T>(server_name: T, lines: usize, pattern: &Regex) -> (Option<String>, usize) 
-    where 
-        T: Deref<Target=str> + std::fmt::Display 
+pub async fn update_messages<T>(
+    server_name: T,
+    lines: usize,
+    pattern: &Regex,
+) -> (Option<String>, usize)
+where
+    T: Deref<Target = str> + std::fmt::Display,
 {
     let file_path: String = format!("/tmp/{server_name}-taurus");
     if !check_exist(&file_path) {
@@ -49,12 +53,12 @@ pub async fn update_messages<T>(server_name: T, lines: usize, pattern: &Regex) -
         println!("*info: pipe file reset -> {server_name}");
         return match message.len() {
             3.. => (Some(message), 0),
-            _ => (None, 0)
+            _ => (None, 0),
         };
     }
     match message.len() {
         3.. => (Some(message), cur_line),
-        _ => (None, cur_line)
+        _ => (None, cur_line),
     }
 }
 
@@ -80,55 +84,6 @@ pub fn replace_formatting(msg: &str) -> impl ToString {
         .replace("_", "\\_")
 }
 
-// remove formatting when sending messages to the tmux session
-#[inline(always)]
-fn clear_formatting(msg: &str) -> Option<String> {
-    let msg = msg
-        .replace("\\", "")
-        .replace("\n", "\\n")
-        .replace("\r", "\\r")
-        .replace("{", "{{")
-        .replace("}", "}}")
-        .replace("\"", "\\\"");
-    match msg.len() {
-        1.. => Some(msg),
-        _ => None,
-    }
-}
-
-// send messages to all servers with a 'game' session
-pub fn send_chat(servers: &Vec<Session>, message: &str) {
-    let lines: Vec<&str> = message.split("\n").collect();
-    for line in lines {
-        let line = &line.replace("MSG ", "");
-        let pos = match line.find("]") {
-            Some(v) => v,
-            None => 0,
-        };
-        let msg = match clear_formatting(line) {
-            Some(v) => v,
-            None => continue,
-        };
-        for server in servers.to_vec() {
-            let name = server.name;
-            if pos != 0 && line[1..pos] == name || server.game.is_none() {
-                continue;
-            }
-            send_command(&name, &format!(r#"tellraw @a {{ "text": "{}" }}"#, msg));
-        }
-    }
-}
-
-// send command to tmux session
-#[inline(always)]
-pub fn send_command(server_name: &str, message: &str) {
-    let _ = Command::new("tmux")
-        .args(["send-keys", "-t", &server_name, &message, "Enter"])
-        .spawn();
-
-    // clean up zombies
-    reap();
-}
 
 // generate the tmux pipe to the tmux session and attempt to remove it if needed
 #[inline]
@@ -146,4 +101,67 @@ pub async fn gen_pipe(server_name: &str, rm: bool) {
 
     // clean up zombies
     reap();
+}
+
+// store configuration for each session, description is purely for telling what it is
+#[derive(Deserialize, Clone)]
+pub struct Session {
+    pub name: String,
+    pub description: Option<String>,
+    pub host: String,
+    pub game: Option<Game>,
+    pub rcon: Option<Rcon>,
+}
+
+impl Session {
+    // send messages to all servers with a 'game' session
+    pub fn send_chat(&self, message: &str) {
+        let lines: Vec<&str> = message.split("\n").collect();
+        for line in lines {
+            let line = &line.replace("MSG ", "");
+            let pos = match line.find("]") {
+                Some(v) => v,
+                None => 0,
+            };
+            let msg = match Self::clear_formatting(line) {
+                Some(v) => v,
+                None => continue,
+            };
+            if pos != 0 && line[1..pos] == self.name || self.game.is_none() {
+                continue;
+            }
+            Self::send_command(&self.name, &format!(r#"tellraw @a {{ "text": "{}" }}"#, msg));
+        }
+    }
+
+    pub fn send_chat_to_clients(clients: &Vec<Self>, message: &str) {
+        clients.iter().for_each(|x| x.send_chat(message));
+    }
+
+    // remove formatting when sending messages to the tmux session
+    #[inline(always)]
+    fn clear_formatting(msg: &str) -> Option<String> {
+        let msg = msg
+            .replace("\\", "")
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("{", "{{")
+            .replace("}", "}}")
+            .replace("\"", "\\\"");
+        match msg.len() {
+            1.. => Some(msg),
+            _ => None,
+        }
+    }
+
+    // send command to tmux session
+    #[inline(always)]
+    pub fn send_command(name: &str, message: &str) {
+        let _ = Command::new("tmux")
+            .args(["send-keys", "-t", &name, &message, "Enter"])
+            .spawn();
+
+        // clean up zombies
+        reap();
+    }
 }

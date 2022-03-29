@@ -4,12 +4,15 @@ mod bridge;
 mod config;
 mod utils;
 mod ws;
-use crate::{bridge::{send_chat, Bridge}, utils::Sys};
-use regex::Regex;
+use crate::{
+    bridge::{Session, Bridge},
+    utils::Sys,
+};
 use args::parse_args;
 use backup::backup;
 use bridge::{gen_pipe, replace_formatting, set_lines, update_messages};
-use config::{Config, Session};
+use config::Config;
+use regex::Regex;
 use std::{
     collections::HashMap,
     convert::Infallible,
@@ -18,7 +21,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::Mutex;
-use utils::{send_to_clients, Clients};
+use utils::Clients;
 use warp::Filter;
 use ws::{ws_handler, ARGS, PATH, SESSIONS};
 #[tokio::main]
@@ -72,7 +75,7 @@ async fn main() {
         //line_map.insert(name.to_string(), set_lines(name));
         line_map.push(Bridge {
             name: name.to_string(),
-            line: set_lines(&name)
+            line: set_lines(&name),
         });
     }
 
@@ -83,7 +86,9 @@ async fn main() {
                 tokio::time::sleep(Duration::from_millis(250)).await;
                 let mut response = Vec::new();
                 for session in line_map.iter_mut() {
-                    let (msg, line_count) = update_messages(session.name.to_owned(), session.line, &parse_pattern).await;
+                    let (msg, line_count) =
+                        update_messages(session.name.to_owned(), session.line, &parse_pattern)
+                            .await;
                     session.line = line_count;
                     let msg = match msg {
                         Some(v) => v,
@@ -92,11 +97,14 @@ async fn main() {
                     response.push(msg);
                 }
                 let collected = &response.join("\n");
-                if collected.len() > 1 {
-                    let msg = format!("MSG {}", &collected);
-                    replace_formatting(&msg);
-                    send_chat(&SESSIONS, &msg);
-                    send_to_clients(&clients, &msg[..msg.len() - 1]).await;
+                if collected.len() < 1 { continue; }
+                let msg = format!("MSG {}", &collected);
+                replace_formatting(&msg);
+                Session::send_chat_to_clients(&SESSIONS, &msg);
+                let lock = clients.clone();
+                for (_, client) in lock.lock().await.iter() {
+                    client.send(&msg[..msg.len() - 1]).await;
+            
                 }
             }
         });
