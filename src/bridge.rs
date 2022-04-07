@@ -1,7 +1,8 @@
 use crate::{
-    config::{Game, Rcon},
-    utils::check_exist,
-    utils::reap
+    config::Rcon,
+    newbackup::Game,
+    utils::{check_exist, reap},
+    info
 };
 use regex::Regex;
 use serde_derive::Deserialize;
@@ -54,7 +55,7 @@ where
     if cur_line > 8000 {
         // reset pipe file and notify
         gen_pipe(&server_name, true).await;
-        println!("*info: pipe file reset -> {server_name}");
+        info!(format!("pipe file reset -> {server_name}"));
         return match message.len() {
             3.. => (Some(message), 0),
             _ => (None, 0),
@@ -97,10 +98,9 @@ pub async fn gen_pipe(server_name: &str, rm: bool) {
         let _ = fs::remove_file(&pipe);
     }
 
-    Command::new("tmux")
+    let _ = Command::new("tmux")
         .args(["pipe-pane", "-t", &server_name, &format!("cat > {pipe}")])
-        .spawn()
-        .expect("*error: \x1b[31mfailed to generate pipe file\x1b[0m");
+        .spawn();
 
     // clean up zombies
     reap();

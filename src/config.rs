@@ -1,7 +1,6 @@
-use crate::{bridge::Session, exit, utils::check_exist};
+use crate::{bridge::Session, exit, utils::check_exist, error, info};
 use serde_derive::Deserialize;
 use serde_json::from_str;
-use std::ops::Deref;
 use std::{fs, fs::File};
 
 // main config
@@ -26,16 +25,6 @@ pub struct Script {
     pub mc_cmd: String,
 }
 
-// options for a session running a server that contains a chat bridge
-#[derive(Deserialize, Clone)]
-pub struct Game {
-    pub file_path: Option<String>,
-    pub backup_interval: Option<usize>,
-    pub backup_keep: Option<usize>,
-    pub in_game_cmd: Option<bool>,
-    pub lines: Option<usize>,
-}
-
 // The ip being None defaults to localhost
 #[derive(Deserialize, Clone)]
 pub struct Rcon {
@@ -45,9 +34,9 @@ pub struct Rcon {
 }
 
 impl Config {
-    pub fn load_config<T>(path: T) -> Config
+    pub fn load_config<T>(path: T) -> Self
     where
-        T: Deref<Target = str> + std::fmt::Display,
+        T: AsRef<str> + std::fmt::Display,
     {
         let path = path.to_string();
         let config_path = &(path.to_owned() + "/config.json");
@@ -59,25 +48,24 @@ impl Config {
         let data = match fs::read_to_string(path.to_owned() + "/config.json") {
             Ok(t) => t,
             Err(e) => {
-                eprintln!("*error: \x1b[31mno config file found at {}!\x1b[0m", path);
-                eprintln!("*error: \x1b[31m{}\x1b[0m", e);
+                error!(format!("no config file found at {}!", path));
+                error!(e);
                 eprintln!("*info: generating default config");
                 Config::default_root_cfg(path.to_owned());
                 if !check_exist(&config_path.as_str()) {
-                    eprintln!(
-                        "*fatal: \x1b[31mcould not read just generated config, exiting\x1b[0m"
-                    );
+                    error!("could not read just generated config, exiting");
                     exit!();
                 }
                 fs::read_to_string(path.to_owned() + "/config.json").unwrap()
             }
         };
 
-        let conf: Config = match from_str(&data) {
+        let conf: Self = match from_str(&data) {
             Ok(t) => t,
             Err(e) => {
-                eprintln!("*error: \x1b[31m{}\x1b[0m", e);
-                panic!("*fatal: \x1b[31minvalid config file! exiting\x1b[0m");
+                error!(e);
+                error!("invalid config file! exiting");
+                exit!();
             }
         };
         if conf.scripts.is_some() {
@@ -89,8 +77,7 @@ impl Config {
     }
 
     fn default_root_cfg(path: String) {
-        File::create(path.to_owned() + "/config.json")
-            .expect("*error: \x1b[31mfailed to create default config file\x1b[0m");
+        File::create(path.to_owned() + "/config.json").unwrap();
 
         let default = r#"{
     "ws_ip": "127.0.0.1",
@@ -109,13 +96,12 @@ impl Config {
     "recompile_directory": ""
 }"#;
 
-        fs::write(path.to_owned() + "/config.json", default)
-            .expect("*error: \x1b[31mfailed to write defaults to config file\x1b[0m");
+        fs::write(path.to_owned() + "/config.json", default).unwrap();
     }
 
     pub fn load_sessions(path: String) -> Vec<Session> {
         if !check_exist(&(path.to_owned() + "/servers/")) {
-            Config::default(path.to_owned());
+            Self::default(path.to_owned());
         }
 
         let mut sessions = Vec::new();
@@ -134,8 +120,9 @@ impl Config {
             match from_str(&data) {
                 Ok(t) => sessions.push(t),
                 Err(e) => {
-                    eprintln!("*error: \x1b[31m{}\x1b[0m", e);
-                    panic!("*fatal: \x1b[31minvalid server config! exiting\x1b[0m");
+                    error!(e);
+                    error!("invalid server config! exiting");
+                    exit!();
                 }
             };
         }
@@ -147,13 +134,13 @@ impl Config {
     fn default(path: String) {
         let files = ["servers/servers.json", "scripts.json"];
 
-        Config::default_root_cfg(path.to_owned());
+        Self::default_root_cfg(path.to_owned());
         for i in files {
             if check_exist(&(path.to_owned() + "/" + i)) {
                 continue;
             }
 
-            println!("*info: creating file: {}", i);
+            info!(format!("creating file: {}", i));
 
             File::create(path.to_owned() + i)
                 .expect("*error: \x1b[31mfailed to create default files\x1b[0m");

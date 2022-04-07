@@ -2,6 +2,8 @@ use crate::{
     bridge::Session,
     config::Config,
     utils::{Clients, Result, Sys, WsClient},
+    info,
+    warn
 };
 use futures::{FutureExt, StreamExt};
 use std::env;
@@ -32,7 +34,7 @@ pub async fn client_connection(ws: WebSocket, clients: Clients) {
     let client_rcv = UnboundedReceiverStream::new(client_rcv);
     tokio::task::spawn(client_rcv.forward(client_ws_sender).map(|result| {
         if let Err(e) = result {
-            println!("*warn: \x1b[33merror sending websocket msg: {e}\x1b[0m");
+            warn!(format!("error sending websocket msg: {e}"));
         }
     }));
     let uuid = Uuid::new_v4().to_simple().to_string();
@@ -45,17 +47,14 @@ pub async fn client_connection(ws: WebSocket, clients: Clients) {
         let msg = match result {
             Ok(msg) => msg,
             Err(e) => {
-                println!(
-                    "*warn: \x1b[33merror receiving \
-                message for id {uuid}): {e}\x1b[0m"
-                );
+                warn!(format!("error receiving message for id {uuid}): {e}"));
                 break;
             }
         };
         client_msg(&uuid, msg, &clients).await;
     }
     clients.lock().await.remove(&uuid);
-    println!("*info: {} disconnected", uuid);
+    info!(format!("*info: {} disconnected", uuid));
 }
 
 async fn client_msg(client_id: &str, msg: Message, clients: &Clients) {
@@ -144,7 +143,7 @@ async fn handle_response(msg: Message) -> Option<String> {
                 _ => None,
             };
 
-            println!("*info: shell cmd {command}");
+            info!(format!("shell cmd {command}"));
             let args = match args {
                 Some(v) => v,
                 None => &[],

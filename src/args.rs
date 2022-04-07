@@ -1,4 +1,4 @@
-use crate::{exit, ws::PATH, Config, Session};
+use crate::{exit, ws::PATH, Config, Session, error, warn, info};
 use std::fs::{read_dir, remove_file};
 
 pub fn parse_args(args: Vec<String>) {
@@ -20,7 +20,7 @@ pub fn parse_args(args: Vec<String>) {
             "check" => {
                 let _: Config = Config::load_config(PATH.clone());
                 let _: Vec<Session> = Config::load_sessions(PATH.to_owned());
-                println!("*info: \x1b[32mcheck successful, exiting\x1b[0m");
+                info!("check successful, exiting");
                 exit!();
             }
             "backup" => {
@@ -47,7 +47,8 @@ example usage:
                     }
                     "rm" => {
                         if args.len() < 3 {
-                            panic!("\x1b[31m*error:\x1b[0m invalid args! please specify file to operate on");
+                            error!("invalid args! please specify file to operate on");
+                            exit!();
                         }
 
                         if &args[e + 2] == "all" {
@@ -55,31 +56,34 @@ example usage:
                             for i in read_dir(config.backup_location).unwrap() {
                                 let i = match i {
                                     Ok(v) => v,
-                                    Err(e) => panic!(
-                                        "\x1b[31m*error:\x1b[0m failed to read file due to: {e}"
-                                    ),
+                                    Err(e) => {
+                                        error!(e);
+                                        error!("failed to remove file");
+                                        exit!();
+                                    }
                                 };
                                 match remove_file(i.path()) {
                                     Ok(_) => {
-                                        println!(
-                                            "*info: successfully removed {:#?}",
+                                        info!(
+                                            format!("successfully removed {:#?}",
                                             i.file_name()
-                                        );
+                                        ));
                                         files += 1;
                                     }
-                                    Err(e) => panic!(
-                                        "\x1b[31m*error:\x1b[0m failed to remove file due to: {e}"
-                                    ),
+                                    Err(e) => {
+                                        error!(format!("failed to remove file due to: {e}"));
+                                    }
                                 };
                             }
-                            println!("*info: removed {files} files, exiting now");
+                            info!(format!("*info: removed {files} files, exiting now"));
                             exit!();
                         }
 
                         match remove_file(config.backup_location + &args[e + 2]) {
-                            Ok(_) => {}
+                            Ok(_) => {},
                             Err(e) => {
-                                panic!("\x1b[31m*error:\x1b[0m failed to remove file due to: {e}")
+                                error!(format!("failed to remove file due to: {e}"));
+                                exit!();
                             }
                         };
                     }
@@ -88,8 +92,8 @@ example usage:
                 exit!();
             }
             _ => {
-                eprintln!("*warn: \x1b[33minvalid argument -> {}\x1b[0m", arg);
-                println!("*info: \x1b[33mskipping argument \x1b[0m");
+                warn!(format!("invalid argument -> {}", arg));
+                warn!("skipping argument");
                 continue;
             }
         };

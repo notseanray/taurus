@@ -14,11 +14,34 @@ pub struct WsClient {
     pub sender: Option<mpsc::UnboundedSender<std::result::Result<Message, warp::Error>>>,
 }
 
+// colored println macros, are they useful? No, do I care? also no
+
 #[macro_export]
 macro_rules! exit {
     () => {
         std::process::exit(0);
     };
+}
+
+#[macro_export]
+macro_rules! info {
+    ($val:expr) => {
+        println!("*info: \x1b[32m{}\x1b[0m", $val);
+    }
+}
+
+#[macro_export]
+macro_rules! warn {
+    ($val:expr) => {
+        println!("*warn: \x1b[33m{}\x1b[0m", $val);
+    }
+}
+
+#[macro_export]
+macro_rules! error {
+    ($val:expr) => {
+        println!("*error: \x1b[31m{}\x1b[0m", $val);
+    }
 }
 
 extern "C" {

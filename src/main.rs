@@ -4,12 +4,12 @@ mod bridge;
 mod config;
 mod utils;
 mod ws;
+mod newbackup;
 use crate::{
     bridge::{Bridge, Session},
     utils::Sys
 };
 use args::parse_args;
-use backup::backup;
 use bridge::{gen_pipe, replace_formatting, set_lines, update_messages};
 use config::Config;
 use regex::Regex;
@@ -48,8 +48,9 @@ async fn main() {
         ip[i] = match e.parse::<u8>() {
             Ok(t) => t,
             Err(e) => {
-                eprintln!("*error: \x1b[31m{}\x1b[0m", e);
-                panic!("*error: \x1b[31minvalid ip in config file! exiting\x1b[0m");
+                error!(e);
+                error!("invalid ip in config file! exiting");
+                exit!();
             }
         }
     }
@@ -109,56 +110,51 @@ async fn main() {
                 }
             }
         });
-    }
+        let mut clock: u64 = 0;
+        let mut sys = Sys::new();
+        sys.refresh();
 
-    let mut clock: usize = 0;
-    let mut sys = Sys::new();
-    sys.refresh();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                // though this will probably literally never be needed, we can loop forever
+                // max backup interval is u64::MAX
+                clock.wrapping_add(1);
+                for i in &SESSIONS.to_owned() {
+                    let e = i.game.to_owned().unwrap();
 
-    tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            clock += 1;
-            for i in &SESSIONS.to_owned() {
-                if i.game.is_none() || i.game.to_owned().unwrap().backup_interval.is_none() {
-                    continue;
-                }
-
-                let e = i.game.to_owned().unwrap();
-
-                if e.backup_interval.is_some()
-                    && clock % e.backup_interval.unwrap() == 0
-                    && clock > e.backup_interval.unwrap()
-                {
-                    let keep_time = match e.backup_keep {
-                        Some(t) => t,
-                        None => usize::MAX,
-                    };
-                    if e.file_path.is_none() || e.backup_interval.is_none() {
-                        continue;
-                    }
-                    let _ = backup(
-                        None,
-                        keep_time,
-                        e.file_path.unwrap(),
-                        config.backup_location.to_owned(),
-                        e.backup_interval.to_owned().unwrap(),
-                        &sys,
-                    );
+                    /*
+                    if e.backup_interval.is_some()
+                        && clock % e.backup_interval.unwrap() == 0
+                        && clock > e.backup_interval.unwrap()
+                    {
+                        let keep_time = match e.backup_keep {
+                            Some(t) => t,
+                            None => usize::MAX,
+                        };
+                        if e.file_path.is_none() || e.backup_interval.is_none() {
+                            continue;
+                        }
+                        let _ = backup(
+                            None,
+                            keep_time,
+                            e.file_path.unwrap(),
+                            config.backup_location.to_owned(),
+                            e.backup_interval.to_owned().unwrap(),
+                            &sys,
+                        );
+                    }*/
                 }
             }
-        }
-    });
+        });
+    }
 
-    print!(
-        "*info: \x1b[32mmanager loaded in: {:#?}, ",
-        startup.elapsed()
-    );
+    info!(format!("manager loaded in: {:#?}, ", startup.elapsed()));
 
-    println!(
-        "starting websocket server on {}:{}\x1b[0m",
+    info!(format!(
+        "starting websocket server on {}:{}",
         config.ws_ip, config.ws_port
-    );
+    ));
     warp::serve(routes).run((ip, config.ws_port as u16)).await;
 }
 fn with_clients(clients: Clients) -> impl Filter<Extract = (Clients,), Error = Infallible> + Clone {
