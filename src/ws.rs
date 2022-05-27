@@ -107,6 +107,10 @@ async fn handle_response(msg: Message) -> Option<String> {
             Session::send_chat_to_clients(&SESSIONS, in_game_message);
             return None;
         }
+        "LIST" => {
+            Session::send_chat_to_clients(&SESSIONS, "list");
+            return None;
+        }
         "CMD" => {
             let command_index = match command_index {
                 Some(v) => v,
@@ -116,7 +120,7 @@ async fn handle_response(msg: Message) -> Option<String> {
                 Some(v) => v,
                 None => return None,
             };
-            Session::send_command(&target, &cmd);
+            Session::send_command(target, cmd);
             return None;
         }
         "RESTART" => {
@@ -136,7 +140,7 @@ async fn handle_response(msg: Message) -> Option<String> {
         }
         "SHELL" => {
             let instructions: Vec<&str> =
-                message[command_index.unwrap() + 1..].split(" ").collect();
+                message[command_index.unwrap() + 1..].split(' ').collect();
             let command = instructions[0];
             let args = match instructions.len() {
                 2.. => Some(&instructions[1..]),
@@ -144,10 +148,7 @@ async fn handle_response(msg: Message) -> Option<String> {
             };
 
             info!(format!("shell cmd {command}"));
-            let args = match args {
-                Some(v) => v,
-                None => &[],
-            };
+            let args = args.unwrap_or(&[]);
             let _ = Command::new(command).args(args).spawn();
             return None;
         }

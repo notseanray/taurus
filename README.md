@@ -30,7 +30,19 @@ $ wget https://github.com/NotCreative21/taurus/blob/master/install.sh -sSf | sh
 
 * the lld linker can be used to improve compiling times
 
-The required configuration files will be generated on the initial run, additional optional configs can be filled out for more features. This github page will entail what each value does in the future.
+The required configuration files will be generated on the initial run, additional optional configs can be filled out for more features. 
+
+Websocket command info: 
+
+|Command | arguments | response | description |
+|--------|-----------|----------|-------------|
+|MSG     | message to send | None | send a chat message to any session labeled "game" |
+|CMD     | <SESSION_NAME> command | None | send a command to a certain session, can be shell or in game command |
+|RESTART | None | restarting... or failed to execute restart script| executes restart script|
+|SHELL | <command> | None | execute a shell command |
+|HEARTBEAT| None | true or false | determines if the system has high ram usage, storage usage, etc. |
+|CHECK| None | string of info about system | shows the ram usage, cpu usage, storage usage of the server etc. |
+|PING| None | PONG timestamp | returns unix timestamp in ms of system time |
 
 #### current features
 * interacted with through a websocket

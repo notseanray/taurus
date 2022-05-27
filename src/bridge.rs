@@ -34,14 +34,39 @@ where
     let reader = BufReader::new(File::open(file_path).unwrap());
     let mut message = String::new();
     let mut cur_line: usize = lines;
+    let mut list_cmd = false;
+    let mut list_msg = false;
     for (i, line) in reader.lines().enumerate() {
         // assign the real number of lines, if the file is empty lines returns 0 by default
         // if there is 1 line, there is still 0 lines due to it being 0 indexed
         let real = i + 1;
         if real > cur_line {
-            let line = line.unwrap_or(String::from(""));
+            let line = line.unwrap_or_else(|_| String::from(""));
             cur_line = real;
             if !pattern.is_match(&line) {
+                if list_cmd && line.len() > 43 && &line[33..43] == "There are " {
+                    let list_message: Vec<&str> = (&line[33..]).split(' ').collect();
+                    let min: u32 = match list_message[2].parse() {
+                        Ok(v) => v,
+                        Err(_) => continue
+                    };
+                    let max: u32 = match list_message[7].parse() {
+                        Ok(v) => v,
+                        Err(_) => continue
+                    };
+                    message.push_str(&format!("{server_name}: [{min}/{max}]"));
+                    // 1.13 +
+                    if list_message.len() > 10 {
+                        message.push_str(&list_message[10..].join(" "));
+                    } else if min > 0 {
+                        list_msg = true;
+                    }
+                }
+                if list_msg {
+                    message.push_str(&line);
+                    list_msg = false;
+                }
+                list_cmd = line == "list";
                 continue;
             }
             // prevent potential panics from attempting to index weird unicode

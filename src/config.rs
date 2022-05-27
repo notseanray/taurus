@@ -1,6 +1,7 @@
-use crate::{bridge::Session, exit, utils::check_exist, error, info};
+use crate::{bridge::Session, exit, utils::check_exist, error};
 use serde_derive::Deserialize;
 use serde_json::from_str;
+use std::path::PathBuf;
 use std::{fs, fs::File};
 
 // main config
@@ -40,8 +41,8 @@ impl Config {
     {
         let path = path.to_string();
         let config_path = &(path.to_owned() + "/config.json");
-        if !check_exist(&config_path.as_str()) {
-            Config::default(path.to_owned());
+        if !check_exist(config_path) {
+            Config::default(&path);
             Config::default_root_cfg(path.to_owned());
         }
 
@@ -52,11 +53,11 @@ impl Config {
                 error!(e);
                 eprintln!("*info: generating default config");
                 Config::default_root_cfg(path.to_owned());
-                if !check_exist(&config_path.as_str()) {
+                if !check_exist(config_path) {
                     error!("could not read just generated config, exiting");
                     exit!();
                 }
-                fs::read_to_string(path.to_owned() + "/config.json").unwrap()
+                fs::read_to_string(path + "/config.json").unwrap()
             }
         };
 
@@ -101,7 +102,7 @@ impl Config {
 
     pub fn load_sessions(path: String) -> Vec<Session> {
         if !check_exist(&(path.to_owned() + "/servers/")) {
-            Self::default(path.to_owned());
+            Self::default(&path);
         }
 
         let mut sessions = Vec::new();
@@ -129,21 +130,10 @@ impl Config {
         sessions
     }
 
-    // TODO
-    // check if servers json will function correctly
-    fn default(path: String) {
-        let files = ["servers/servers.json", "scripts.json"];
-
-        Self::default_root_cfg(path.to_owned());
-        for i in files {
-            if check_exist(&(path.to_owned() + "/" + i)) {
-                continue;
-            }
-
-            info!(format!("creating file: {}", i));
-
-            File::create(path.to_owned() + i)
-                .expect("*error: \x1b[31mfailed to create default files\x1b[0m");
-        }
+    fn default(path: &str) {
+        let current_directory = PathBuf::from(path);
+        let _ = fs::create_dir(current_directory.join("servers"));
+        let _ = fs::File::create(current_directory.join("./server/servers.json"));
+        let _ = fs::File::create(current_directory.join("scripts.json"));
     }
 }

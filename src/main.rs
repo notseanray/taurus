@@ -24,6 +24,7 @@ use tokio::sync::Mutex;
 use utils::Clients;
 use warp::Filter;
 use ws::{ws_handler, ARGS, PATH, SESSIONS};
+
 #[tokio::main]
 async fn main() {
     let startup = Instant::now();
@@ -44,7 +45,7 @@ async fn main() {
     let routes = ws_route.with(warp::cors().allow_any_origin());
 
     let mut ip = [0; 4];
-    for (i, e) in config.ws_ip.to_owned().split(".").enumerate() {
+    for (i, e) in config.ws_ip.to_owned().split('.').enumerate() {
         ip[i] = match e.parse::<u8>() {
             Ok(t) => t,
             Err(e) => {
@@ -76,7 +77,7 @@ async fn main() {
         //line_map.insert(name.to_string(), set_lines(name));
         line_map.push(Bridge {
             name: name.to_string(),
-            line: set_lines(&name),
+            line: set_lines(name),
         });
     }
 
@@ -98,7 +99,7 @@ async fn main() {
                     response.push(msg);
                 }
                 let collected = &response.join("\n");
-                if collected.len() < 1 {
+                if collected.is_empty() {
                     continue;
                 }
                 let msg = format!("MSG {}", &collected);
