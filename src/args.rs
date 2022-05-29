@@ -1,8 +1,8 @@
-use crate::{exit, ws::PATH, Config, Session, error, warn, info};
+use crate::{error, exit, info, warn, ws::PATH, Config, Session};
 use std::fs::{read_dir, remove_file};
 
-pub fn parse_args(args: Vec<String>) {
-    if args.len() < 1 {
+pub(crate) fn parse_args(args: Vec<String>) {
+    if args.is_empty() {
         return;
     }
     let parseable = args.iter().skip(1);
@@ -64,10 +64,7 @@ example usage:
                                 };
                                 match remove_file(i.path()) {
                                     Ok(_) => {
-                                        info!(
-                                            format!("successfully removed {:#?}",
-                                            i.file_name()
-                                        ));
+                                        info!(format!("successfully removed {:#?}", i.file_name()));
                                         files += 1;
                                     }
                                     Err(e) => {
@@ -80,7 +77,7 @@ example usage:
                         }
 
                         match remove_file(config.backup_location + &args[e + 2]) {
-                            Ok(_) => {},
+                            Ok(_) => {}
                             Err(e) => {
                                 error!(format!("failed to remove file due to: {e}"));
                                 exit!();

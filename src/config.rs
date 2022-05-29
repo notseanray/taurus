@@ -1,4 +1,4 @@
-use crate::{bridge::Session, exit, utils::check_exist, error};
+use crate::{bridge::Session, error, exit, utils::check_exist};
 use serde_derive::Deserialize;
 use serde_json::from_str;
 use std::path::PathBuf;
@@ -6,9 +6,10 @@ use std::{fs, fs::File};
 
 // main config
 #[derive(Deserialize)]
-pub struct Config {
+pub(crate) struct Config {
     pub ws_ip: String,
     pub ws_port: u64,
+    pub ws_password: String,
     pub backup_location: String,
     pub scripts: Option<Vec<Script>>,
     pub restart_script: Option<String>,
@@ -18,7 +19,7 @@ pub struct Config {
 // for any optional scripts, if either interval or absolute is 0 then we will use the non zero
 // file, otherwise the script never gets executed.
 #[derive(Deserialize)]
-pub struct Script {
+pub(crate) struct Script {
     pub description: String,
     pub interval: u64,
     pub absolute: u64,
@@ -28,14 +29,14 @@ pub struct Script {
 
 // The ip being None defaults to localhost
 #[derive(Deserialize, Clone)]
-pub struct Rcon {
+pub(crate) struct Rcon {
     pub ip: Option<String>,
     pub port: u64,
     pub password: String,
 }
 
 impl Config {
-    pub fn load_config<T>(path: T) -> Self
+    pub(crate) fn load_config<T>(path: T) -> Self
     where
         T: AsRef<str> + std::fmt::Display,
     {
@@ -97,17 +98,17 @@ impl Config {
     "recompile_directory": ""
 }"#;
 
-        fs::write(path.to_owned() + "/config.json", default).unwrap();
+        fs::write(path + "/config.json", default).unwrap();
     }
 
-    pub fn load_sessions(path: String) -> Vec<Session> {
+    pub(crate) fn load_sessions(path: String) -> Vec<Session> {
         if !check_exist(&(path.to_owned() + "/servers/")) {
             Self::default(&path);
         }
 
         let mut sessions = Vec::new();
 
-        for i in fs::read_dir(path.to_owned() + "servers/")
+        for i in fs::read_dir(path + "servers/")
             .expect("*error: \x1b[31mfailed to read server directory\x1b[0m")
         {
             let i = i.unwrap();

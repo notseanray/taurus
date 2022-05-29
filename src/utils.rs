@@ -5,14 +5,8 @@ use sysinfo::{DiskExt, System, SystemExt};
 use tokio::sync::{mpsc, Mutex};
 use warp::{ws::Message, Rejection};
 
-pub type Clients = Arc<Mutex<HashMap<String, WsClient>>>;
-pub type Result<T> = std::result::Result<T, Rejection>;
-
-#[derive(Debug, Clone)]
-pub struct WsClient {
-    pub client_id: String,
-    pub sender: Option<mpsc::UnboundedSender<std::result::Result<Message, warp::Error>>>,
-}
+pub(crate) type Clients = Arc<Mutex<HashMap<String, WsClient>>>;
+pub(crate) type Result<T> = std::result::Result<T, Rejection>;
 
 // colored println macros, are they useful? No, do I care? also no
 
@@ -27,21 +21,21 @@ macro_rules! exit {
 macro_rules! info {
     ($val:expr) => {
         println!("*info: \x1b[32m{}\x1b[0m", $val);
-    }
+    };
 }
 
 #[macro_export]
 macro_rules! warn {
     ($val:expr) => {
         println!("*warn: \x1b[33m{}\x1b[0m", $val);
-    }
+    };
 }
 
 #[macro_export]
 macro_rules! error {
     ($val:expr) => {
         println!("*error: \x1b[31m{}\x1b[0m", $val);
-    }
+    };
 }
 
 extern "C" {
@@ -50,7 +44,7 @@ extern "C" {
 
 // std::Command can leave behind zombie processes that buid up over time
 #[inline]
-pub fn reap() {
+pub(crate) fn reap() {
     unsafe {
         waitpid(-1, std::ptr::null_mut(), 0x00000001);
     }
@@ -58,10 +52,17 @@ pub fn reap() {
 
 // function to check if the file or folder exist
 #[inline]
-pub fn check_exist(dir: &str) -> bool {
-    let current_path = PathBuf::from(dir.to_string());
-    return current_path.exists();
+pub(crate) fn check_exist(dir: &str) -> bool {
+    PathBuf::from(dir.to_string()).exists()
 }
+
+#[derive(Clone)]
+pub(crate) struct WsClient {
+    pub client_id: String,
+    pub sender: Option<mpsc::UnboundedSender<std::result::Result<Message, warp::Error>>>,
+    pub authed: bool,
+}
+
 impl WsClient {
     pub async fn send<'a, T: Into<String>>(&self, msg: T) {
         if let Some(v) = &self.sender {
@@ -96,10 +97,10 @@ impl Sys {
     pub fn refresh(&mut self) {
         let sys = &mut self.sys;
         sys.refresh_all();
-        self.disk = Self::check_disk(&sys);
-        self.disk_info = Self::disk_info(&sys);
-        self.cpu_avg = Self::cpu_average(&sys);
-        self.uptime = Self::uptime(&sys);
+        self.disk = Self::check_disk(sys);
+        self.disk_info = Self::disk_info(sys);
+        self.cpu_avg = Self::cpu_average(sys);
+        self.uptime = Self::uptime(sys);
     }
 
     pub fn sys_health_check(&self) -> bool {

@@ -1,9 +1,9 @@
 use crate::{
-    bridge::Session,
+    bridge::{Session, Bridge},
     config::Config,
-    utils::{Clients, Result, Sys, WsClient},
     info,
-    warn
+    utils::{Clients, Result, Sys, WsClient},
+    warn,
 };
 use futures::{FutureExt, StreamExt};
 use std::env;
@@ -21,13 +21,14 @@ lazy_static::lazy_static! {
         let path: Vec<String> = env::args().collect();
         path[0][..path[0].len() - 6].to_string()
     };
-    pub static ref ARGS: Vec<String> = env::args().collect();
-    pub static ref PATH: String = ARGS[0].to_owned()[..ARGS[0].len() - 6].to_string();
-    pub static ref SESSIONS: Vec<Session> = Config::load_sessions(PATH.to_owned());
+    pub(crate) static ref ARGS: Vec<String> = env::args().collect();
+    pub(crate) static ref PATH: String = ARGS[0].to_owned()[..ARGS[0].len() - 6].to_string();
+    pub(crate) static ref SESSIONS: Vec<Session> = Config::load_sessions(PATH.to_owned());
+    pub(crate) static ref CONFIG: Config = Config::load_config(PATH.to_owned());
     static ref RESTART_SCRIPT: Option<String> = Config::load_config(CONFIG_PATH.to_string()).restart_script;
 }
 
-pub async fn client_connection(ws: WebSocket, clients: Clients) {
+pub(crate) async fn client_connection(ws: WebSocket, clients: Clients) {
     println!("*info: establishing new client connection...");
     let (client_ws_sender, mut client_ws_rcv) = ws.split();
     let (client_sender, client_rcv) = mpsc::unbounded_channel();
@@ -41,6 +42,7 @@ pub async fn client_connection(ws: WebSocket, clients: Clients) {
     let new_client = WsClient {
         client_id: uuid.clone(),
         sender: Some(client_sender),
+        authed: false,
     };
     clients.lock().await.insert(uuid.clone(), new_client);
     while let Some(result) = client_ws_rcv.next().await {
@@ -51,45 +53,58 @@ pub async fn client_connection(ws: WebSocket, clients: Clients) {
                 break;
             }
         };
-        client_msg(&uuid, msg, &clients).await;
+        client_msg(&uuid, msg, clients.clone()).await;
     }
     clients.lock().await.remove(&uuid);
     info!(format!("*info: {} disconnected", uuid));
 }
 
-async fn client_msg(client_id: &str, msg: Message, clients: &Clients) {
-    if let Some(response) = handle_response(msg).await {
-        let locked = clients.lock().await;
-        match locked.get(client_id) {
-            Some(v) => {
-                if let Some(sender) = &v.sender {
-                    let _ = sender.send(Ok(Message::text(response)));
+async fn client_msg(client_id: &str, msg: Message, clients: Clients) {
+    let msg = match msg.to_str() {
+        Ok(v) => v,
+        Err(_) => return
+    };
+    let mut locked = clients.lock().await;
+    if let Some(mut v) = locked.get_mut(client_id) {
+        if !v.authed {
+            v.authed = {
+                if CONFIG.ws_password.len() == msg.len() {
+                    let mut result = 0;
+                    for (x, y) in CONFIG.ws_password.chars().zip(msg.chars()) {
+                        result |= x as u32 ^ y as u32;
+                    }
+                    result == 0
+                } else {
+                    false
                 }
+            };
+            return;
+        }
+    }
+    // we move locking after the response once authed, looks messy but should be better, I hope
+    if let Some(response) = handle_response(msg).await {
+        if let Some(v) = locked.get(client_id) {
+            if let Some(sender) = &v.sender {
+                let _ = sender.send(Ok(Message::text(response)));
             }
-            None => {}
         }
     }
 }
 
-pub async fn ws_handler(ws: warp::ws::Ws, clients: Clients) -> Result<impl Reply> {
+pub(crate) async fn ws_handler(ws: warp::ws::Ws, clients: Clients) -> Result<impl Reply> {
     Ok(ws.on_upgrade(move |socket| client_connection(socket, clients)))
 }
 
 fn get_cmd(msg: &str) -> Option<(&str, &str)> {
-    let response = match msg.find(" ") {
+    let response = match msg.find(' ') {
         Some(v) => v,
         None => return None,
     };
     Some((&msg[..response], &msg[response + 1..]))
 }
 
-async fn handle_response(msg: Message) -> Option<String> {
-    let message = match msg.to_str() {
-        Ok(v) => v,
-        Err(_) => return None,
-    };
-
-    let command_index = message.find(" ");
+async fn handle_response(message: &str) -> Option<String> {
+    let command_index = message.find(' ');
 
     // split the command into the first word if applicable
     let command = match command_index {
@@ -129,7 +144,8 @@ async fn handle_response(msg: Message) -> Option<String> {
                 None => return Some("no restart script found".to_string()),
             };
             let restart = Command::new("sh")
-                .arg(script_path)
+                .args(["-c", &script_path])
+                .kill_on_drop(true)
                 .status()
                 .await
                 .expect("could not execute restart script");
@@ -149,7 +165,7 @@ async fn handle_response(msg: Message) -> Option<String> {
 
             info!(format!("shell cmd {command}"));
             let args = args.unwrap_or(&[]);
-            let _ = Command::new(command).args(args).spawn();
+            let _ = Command::new(command).args(args).kill_on_drop(true).spawn();
             return None;
         }
         "HEARTBEAT" => Some(format!("{}", Sys::new().sys_health_check())),
