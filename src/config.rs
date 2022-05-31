@@ -1,5 +1,5 @@
 use crate::{bridge::Session, error, exit, utils::check_exist};
-use serde_derive::Deserialize;
+use serde_derive::{Deserialize, Serialize};
 use serde_json::from_str;
 use std::path::PathBuf;
 use std::{fs, fs::File};
@@ -10,6 +10,8 @@ pub(crate) struct Config {
     pub ws_ip: String,
     pub ws_port: u64,
     pub ws_password: String,
+    pub webserver_location: Option<String>,
+    pub webserver_prefix: Option<String>,
     pub backup_location: String,
     pub scripts: Option<Vec<Script>>,
     pub restart_script: Option<String>,
@@ -28,7 +30,7 @@ pub(crate) struct Script {
 }
 
 // The ip being None defaults to localhost
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Serialize)]
 pub(crate) struct Rcon {
     pub ip: Option<String>,
     pub port: u64,

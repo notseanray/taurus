@@ -1,11 +1,13 @@
 use crate::{
     bridge::{Session, Bridge},
+    backup::list_backups,
     config::Config,
     info,
     utils::{Clients, Result, Sys, WsClient},
     warn,
 };
 use futures::{FutureExt, StreamExt};
+use serde_json::json;
 use std::env;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::{process::Command, sync::mpsc};
@@ -15,6 +17,8 @@ use warp::{
     ws::{Message, WebSocket},
     Reply,
 };
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 lazy_static::lazy_static! {
     static ref CONFIG_PATH: String = {
@@ -25,6 +29,7 @@ lazy_static::lazy_static! {
     pub(crate) static ref PATH: String = ARGS[0].to_owned()[..ARGS[0].len() - 6].to_string();
     pub(crate) static ref SESSIONS: Vec<Session> = Config::load_sessions(PATH.to_owned());
     pub(crate) static ref CONFIG: Config = Config::load_config(PATH.to_owned());
+    pub(crate) static ref BRIDGES: Arc<Mutex<Vec<Bridge>>> = Arc::new(Mutex::new(Vec::new()));
     static ref RESTART_SCRIPT: Option<String> = Config::load_config(CONFIG_PATH.to_string()).restart_script;
 }
 
@@ -120,11 +125,40 @@ async fn handle_response(message: &str) -> Option<String> {
             // TODO
             // replace with tmux json + cleanse input
             Session::send_chat_to_clients(&SESSIONS, in_game_message);
-            return None;
+            None
         }
         "LIST" => {
             Session::send_chat_to_clients(&SESSIONS, "list");
-            return None;
+            None
+        }
+        "CP_REGION" => {
+            let (_, args) = match get_cmd(message) {
+                Some(v) => v,
+                None => return None,
+            };
+            let args: Vec<&str> = args.split_whitespace().collect();
+            if args.len() != 4 {
+                return Some("Invalid Arguments".into()); 
+            }
+            let (x, y): (i32, i32) = match (args[2].parse(), args[3].parse()) {
+                (Ok(v), Ok(e)) => (v, e),
+                _ => return Some("Invalid Region Identifier".into())
+            };
+            let dim_arg = args[1].to_uppercase();
+            let dim = match dim_arg.as_str() {
+                "OW" | "NETHER" | "END" => &dim_arg,
+                _ => return Some("Invalid Dimension Provided".into()),
+            };
+            let mut response = String::new();
+            for session in &*SESSIONS {
+                if session.name != args[0] {
+                    continue;
+                }
+                if let Some(v) = &session.game {
+                    response = v.copy_region(dim, x, y);
+                }
+            }
+            Some(response)
         }
         "CMD" => {
             let command_index = match command_index {
@@ -136,8 +170,49 @@ async fn handle_response(message: &str) -> Option<String> {
                 None => return None,
             };
             Session::send_command(target, cmd);
-            return None;
+            None
         }
+        "CP_STRUCTURE" => {
+            let (_, args) = match get_cmd(message) {
+                Some(v) => v,
+                None => return None,
+            };
+            let args: Vec<&str> = args.split_whitespace().collect();
+            if args.len() != 2 {
+                return Some("Invalid Arguments".into()); 
+            }
+            let mut response = String::new();
+            for session in &*SESSIONS {
+                if session.name != args[0] {
+                    continue;
+                }
+                if let Some(v) = &session.game {
+                    response = v.copy_structure(args[1]);
+                }
+            }
+            Some(response)
+        }
+        "LIST_STRUCTURES" => {
+            let (_, args) = match get_cmd(message) {
+                Some(v) => v,
+                None => return None,
+            };
+            let args: Vec<&str> = args.split_whitespace().collect();
+            if args.len() != 1 {
+                return Some("Invalid Arguments".into()); 
+            }
+            let mut response = String::new();
+            for session in &*SESSIONS {
+                if session.name != args[0] {
+                    continue;
+                }
+                if let Some(v) = &session.game {
+                    response = v.list_structures();
+                }
+            }
+            Some(response)
+        }
+        "LIST_BACKUPS" => Some(list_backups()),
         "RESTART" => {
             let script_path = match RESTART_SCRIPT.to_owned() {
                 Some(v) => v,
@@ -152,8 +227,9 @@ async fn handle_response(message: &str) -> Option<String> {
             if restart.success() {
                 return Some("restarting...".to_string());
             }
-            return Some("failed to execute restart script".to_string());
+            Some("failed to execute restart script".to_string())
         }
+        "LIST_SESSIONS" => Some(json!(*SESSIONS.clone()).to_string()),
         "SHELL" => {
             let instructions: Vec<&str> =
                 message[command_index.unwrap() + 1..].split(' ').collect();
@@ -166,7 +242,7 @@ async fn handle_response(message: &str) -> Option<String> {
             info!(format!("shell cmd {command}"));
             let args = args.unwrap_or(&[]);
             let _ = Command::new(command).args(args).kill_on_drop(true).spawn();
-            return None;
+            None
         }
         "HEARTBEAT" => Some(format!("{}", Sys::new().sys_health_check())),
         "CHECK" => Some(format!("{}", Sys::new())),
@@ -176,7 +252,7 @@ async fn handle_response(message: &str) -> Option<String> {
                 .unwrap()
                 .as_millis();
             //send_to_clients(clients, &format!("PONG {time}")).await;
-            return Some(format!("PONG {time}"));
+            Some(format!("PONG {time}"))
         }
         _ => None,
     };

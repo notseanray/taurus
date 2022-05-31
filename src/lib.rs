@@ -7,7 +7,7 @@ mod ws;
 use crate::{
     args::parse_args,
     bridge::{Bridge, Session},
-    utils::Sys,
+    utils::Sys, backup::delete_backups_older_than,
 };
 use bridge::{gen_pipe, replace_formatting, set_lines, update_messages};
 use config::Config;
@@ -15,14 +15,13 @@ use regex::Regex;
 use std::{
     collections::HashMap,
     convert::Infallible,
-    env,
     sync::Arc,
     time::{Duration, Instant},
 };
 use tokio::sync::Mutex;
 use utils::Clients;
 use warp::Filter;
-use ws::{ws_handler, ARGS, SESSIONS, CONFIG};
+use ws::{ws_handler, ARGS, SESSIONS, CONFIG, BRIDGES};
 
 pub async fn run() {
     let startup = Instant::now();
@@ -30,8 +29,6 @@ pub async fn run() {
     if ARGS.len() > 1 {
         parse_args(ARGS.to_vec());
     }
-
-    env::set_var("TAURUS_SESSIONS", SESSIONS.len().to_string());
 
     let clients: Clients = Arc::new(Mutex::new(HashMap::new()));
     let ws_route = warp::path("taurus")
@@ -49,8 +46,6 @@ pub async fn run() {
             exit!();
         }
     }
-
-    let mut line_map: Vec<Bridge> = Vec::new();
 
     for session in &SESSIONS.to_vec() {
         let name = &session.name;
@@ -72,7 +67,8 @@ pub async fn run() {
         };
         // Wait for tmux to generate the pipe
         tokio::time::sleep(Duration::from_millis(10)).await;
-        line_map.push(Bridge {
+        let mut locked = BRIDGES.lock().await;
+        locked.push(Bridge {
             name: name.to_string(),
             line: set_lines(name),
             enabled,
@@ -85,7 +81,8 @@ pub async fn run() {
             loop {
                 tokio::time::sleep(Duration::from_millis(250)).await;
                 let mut response: Vec<String> = Vec::new();
-                for session in line_map.iter_mut() {
+                let mut locked = BRIDGES.lock().await;
+                for session in locked.iter_mut() {
                     let msg = update_messages(session, &parse_pattern).await;
                     if let Some(v) = msg {
                         response.push(v);
@@ -104,7 +101,7 @@ pub async fn run() {
                 }
             }
         });
-        let mut clock: u64 = 0;
+        let clock: u64 = 0;
         let mut sys = Sys::new();
         sys.refresh();
 
@@ -114,9 +111,22 @@ pub async fn run() {
                 // though this will probably literally never be needed, we can loop forever
                 // max backup interval is u64::MAX
                 clock.wrapping_add(1);
-                for i in &SESSIONS.to_owned() {
-                    let e = i.game.to_owned().unwrap();
+                for i in &*SESSIONS {
+                    let game = match &i.game {
+                        Some(v) => v,
+                        None => continue,
+                    };
+                    if game.backup_interval.is_none() {
+                        continue;
+                    }
+                    if clock % game.backup_interval.unwrap() == 0 {
+                        let _ = game.backup(&sys, &i.name, &CONFIG.backup_location);
+                        if let Some(v) = game.backup_keep {
+                            delete_backups_older_than(&i.name, v);
+                        }
+                    }
                 }
+                // todo if disk is low then reduce keep time
             }
         });
     }

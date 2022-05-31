@@ -4,11 +4,12 @@ use crate::{
     utils::{check_exist, reap},
 };
 use regex::Regex;
-use serde_derive::Deserialize;
+use serde_derive::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use tokio::process::Command;
 
+#[derive(Serialize)]
 pub(crate) struct Bridge {
     pub name: String,
     pub line: usize,
@@ -150,7 +151,7 @@ pub async fn gen_pipe(server_name: &str, rm: bool) {
 }
 
 // store configuration for each session, description is purely for telling what it is
-#[derive(Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub(crate) struct Session {
     pub name: String,
     pub description: Option<String>,

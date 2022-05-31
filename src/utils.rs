@@ -64,14 +64,14 @@ pub(crate) struct WsClient {
 }
 
 impl WsClient {
-    pub async fn send<'a, T: Into<String>>(&self, msg: T) {
+    pub(crate) async fn send<'a, T: Into<String>>(&self, msg: T) {
         if let Some(v) = &self.sender {
             let _ = v.send(Ok(Message::text(msg)));
         }
     }
 }
 
-pub struct Sys {
+pub(crate) struct Sys {
     disk: Option<u8>,
     disk_info: Vec<(u64, u64, f32)>,
     cpu_avg: (f32, f32),
@@ -81,7 +81,7 @@ pub struct Sys {
 }
 
 impl Sys {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let mut sys = System::new_all();
         sys.refresh_all();
         Self {
@@ -94,7 +94,7 @@ impl Sys {
         }
     }
 
-    pub fn refresh(&mut self) {
+    pub(crate) fn refresh(&mut self) {
         let sys = &mut self.sys;
         sys.refresh_all();
         self.disk = Self::check_disk(sys);
@@ -103,9 +103,12 @@ impl Sys {
         self.uptime = Self::uptime(sys);
     }
 
-    pub fn sys_health_check(&self) -> bool {
+    pub(crate) fn sys_health_check(&self) -> bool {
         let ram = self.ram;
-        if ram.0 as f64 / ram.1 as f64 > 0.85 || self.cpu_avg.1 > 0.7 {
+        if ram.0 as f64 / ram.1 as f64 > 0.85 || 
+            self.cpu_avg.1 > 0.7 || 
+            Self::check_disk(&self.sys).is_some() 
+        {
             return true;
         }
         false
