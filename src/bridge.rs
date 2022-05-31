@@ -1,7 +1,7 @@
 use crate::{
     backup::Game,
     config::Rcon,
-    utils::{check_exist, reap},
+    utils::{check_exist, reap}, ws::BRIDGES,
 };
 use regex::Regex;
 use serde_derive::{Deserialize, Serialize};
@@ -14,6 +14,7 @@ pub(crate) struct Bridge {
     pub name: String,
     pub line: usize,
     pub enabled: Option<bool>,
+    pub state: bool,
 }
 
 // poll the log file and check for new messages, match them against a certain pattern to dermine if
@@ -31,8 +32,6 @@ pub(crate) async fn update_messages(server: &mut Bridge, pattern: &Regex) -> Opt
     let reader = BufReader::new(File::open(file_path).unwrap());
     let mut message = String::new();
     let mut cur_line: usize = server.line;
-    let mut list_cmd = false;
-    let mut list_msg = false;
     for (i, line) in reader.lines().enumerate() {
         // assign the real number of lines, if the file is empty lines returns 0 by default
         // if there is 1 line, there is still 0 lines due to it being 0 indexed
@@ -40,14 +39,17 @@ pub(crate) async fn update_messages(server: &mut Bridge, pattern: &Regex) -> Opt
         if cur_line <= real {
             continue;
         }
-        let line = line.unwrap_or_else(|_| String::from(""));
+        let line = match line {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
         cur_line = real;
         let mut message_out = String::new();
         let message_chars = line.chars().collect::<Vec<char>>();
         message_chars.iter().for_each(|c| message_out.push(*c));
-        if let Some(false) = server.enabled {
-            if &message_out[33..62] == "Starting Minecraft server on " {
-                server.enabled = Some(true);
+        if let Some(true) = server.enabled {
+            if !server.state && &message_out[10..33] == " [Server thread/INFO]: " {
+                server.state = true;
             } else {
                 return None;
             }
@@ -57,29 +59,12 @@ pub(crate) async fn update_messages(server: &mut Bridge, pattern: &Regex) -> Opt
             message.push_str(&format!("[{}] {}\n", server.name, &message_out[33..]));
             continue;
         }
-        if list_cmd && message_out.len() > 43 && &message_out[10..33] == " [Server thread/INFO]: " {
+        if message_out.len() > 43 && &message_out[10..33] == " [Server thread/INFO]: " {
             let list_message: Vec<&str> = (&message_out[33..]).split_ascii_whitespace().collect();
             if let Some(true) = server.enabled {
                 if &message_out[33..52] == "Stopping the server" {
-                    server.enabled = Some(false);
+                    server.state = false;
                     continue;
-                }
-            }
-            if &message_out[33..43] == "There are " {
-                let min: u32 = match list_message[2].parse() {
-                    Ok(v) => v,
-                    Err(_) => continue,
-                };
-                let max: u32 = match list_message[7].parse() {
-                    Ok(v) => v,
-                    Err(_) => continue,
-                };
-                message.push_str(&format!("{}: [{min}/{max}]", server.name));
-                // 1.13 +
-                if list_message.len() > 10 {
-                    message.push_str(&list_message[10..].join(" "));
-                } else if min > 0 {
-                    list_msg = true;
                 }
             }
             if list_message[2] == "has" && list_message.len() > 6 && !list_message[0].contains('<')
@@ -87,11 +72,6 @@ pub(crate) async fn update_messages(server: &mut Bridge, pattern: &Regex) -> Opt
                 message.push_str(&message_out[33..]);
             }
         }
-        if list_msg {
-            message.push_str(&message_out[33..]);
-            list_msg = false;
-        }
-        list_cmd = line == "list";
     }
     // if the log file is above 8k we can reset it to prevent parsing time from building up
     if cur_line > 8000 {
@@ -162,7 +142,7 @@ pub(crate) struct Session {
 
 impl Session {
     // send messages to all servers with a 'game' session
-    pub(crate) fn send_chat(&self, message: &str) {
+    pub(crate) fn send_chat(&self, rcon: Option<&Rcon>, message: &str) {
         let lines: Vec<&str> = message.lines().collect();
         for line in lines {
             let line = &line.replace("MSG ", "");
@@ -174,24 +154,29 @@ impl Session {
             if pos != 0 && line[1..pos] == self.name || self.game.is_none() {
                 continue;
             }
+            let message = format!(r#"tellraw @a {{ "text": "{}" }}"#, msg);
+            if let Some(v) = rcon {
+                let _ = v.rcon_send(&message);
+                continue;
+            }
             Self::send_command(
                 &self.name,
-                &format!(r#"tellraw @a {{ "text": "{}" }}"#, msg),
+                &message,
             );
         }
     }
 
-    pub fn send_chat_to_clients(clients: &[Self], message: &str) {
-        clients
-            .iter()
-            .filter(|x| {
-                if let Some(v) = &x.game {
-                    v.chat_bridge == Some(true)
-                } else {
-                    false
+    pub(crate) async fn send_chat_to_clients(clients: &[Self], message: &str) {
+        for client in clients {
+            if let Some(v) = &client.game {
+                let locked = BRIDGES.lock().await;
+                for bridge in &*locked {
+                    if bridge.name == client.name && v.chat_bridge == Some(true) && bridge.state {
+                        Self::send_chat(client, client.rcon.as_ref(), message);
+                    }
                 }
-            })
-            .for_each(|x| x.send_chat(message));
+            } 
+        }
     }
 
     // remove formatting when sending messages to the tmux session
@@ -217,8 +202,5 @@ impl Session {
             .args(["send-keys", "-t", name, message, "Enter"])
             .kill_on_drop(true)
             .spawn();
-
-        // clean up zombies
-        reap();
     }
 }

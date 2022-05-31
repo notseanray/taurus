@@ -3,6 +3,7 @@ use serde_derive::{Deserialize, Serialize};
 use serde_json::from_str;
 use std::path::PathBuf;
 use std::{fs, fs::File};
+use rcon_rs::Client;
 
 // main config
 #[derive(Deserialize)]
@@ -33,8 +34,34 @@ pub(crate) struct Script {
 #[derive(Deserialize, Clone, Serialize)]
 pub(crate) struct Rcon {
     pub ip: Option<String>,
-    pub port: u64,
+    pub port: u16,
     pub password: String,
+}
+
+impl Rcon {
+    pub(crate) async fn rcon_send(&self, msg: &str) -> Result<(), std::io::Error> {
+        let mut conn = Client::new(
+            &self.ip.clone().unwrap_or_else(|| "localhost".to_string()), 
+            &self.port.to_string()
+        )?;
+        if conn.auth(&self.password).is_ok() {
+            let _ = conn.send(msg, None);
+        };
+        Ok(())
+    }
+    pub(crate) async fn rcon_send_with_response(&self, msg: &str) -> Result<Option<String>, std::io::Error> {
+        let mut conn = Client::new(
+            &self.ip.clone().unwrap_or_else(|| "localhost".to_string()), 
+            &self.port.to_string()
+        )?;
+        if conn.auth(&self.password).is_ok() {
+            return match conn.send(msg, None) {
+                Ok(v) => Ok(Some(v)),
+                Err(_) => Ok(None),
+            };
+        };
+        Ok(None)
+    }
 }
 
 impl Config {

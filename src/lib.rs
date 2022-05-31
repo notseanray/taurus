@@ -6,8 +6,9 @@ mod utils;
 mod ws;
 use crate::{
     args::parse_args,
+    backup::delete_backups_older_than,
     bridge::{Bridge, Session},
-    utils::Sys, backup::delete_backups_older_than,
+    utils::Sys,
 };
 use bridge::{gen_pipe, replace_formatting, set_lines, update_messages};
 use config::Config;
@@ -21,7 +22,7 @@ use std::{
 use tokio::sync::Mutex;
 use utils::Clients;
 use warp::Filter;
-use ws::{ws_handler, ARGS, SESSIONS, CONFIG, BRIDGES};
+use ws::{ws_handler, ARGS, BRIDGES, CONFIG, SESSIONS};
 
 pub async fn run() {
     let startup = Instant::now();
@@ -72,6 +73,7 @@ pub async fn run() {
             name: name.to_string(),
             line: set_lines(name),
             enabled,
+            state: enabled.unwrap_or_default(),
         });
     }
 
@@ -94,14 +96,14 @@ pub async fn run() {
                 }
                 let msg = format!("MSG {}", &collected);
                 replace_formatting(&msg);
-                Session::send_chat_to_clients(&SESSIONS, &msg);
+                Session::send_chat_to_clients(&SESSIONS, &msg).await;
                 let lock = clients.clone();
                 for (_, client) in lock.lock().await.iter() {
                     client.send(&msg[..msg.len() - 1]).await;
                 }
             }
         });
-        let clock: u64 = 0;
+        let mut clock: u64 = 0;
         let mut sys = Sys::new();
         sys.refresh();
 
@@ -110,7 +112,7 @@ pub async fn run() {
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 // though this will probably literally never be needed, we can loop forever
                 // max backup interval is u64::MAX
-                clock.wrapping_add(1);
+                clock = clock.wrapping_add(1);
                 for i in &*SESSIONS {
                     let game = match &i.game {
                         Some(v) => v,
@@ -122,7 +124,7 @@ pub async fn run() {
                     if clock % game.backup_interval.unwrap() == 0 {
                         let _ = game.backup(&sys, &i.name, &CONFIG.backup_location);
                         if let Some(v) = game.backup_keep {
-                            delete_backups_older_than(&i.name, v);
+                            delete_backups_older_than(&i.name, v).await;
                         }
                     }
                 }

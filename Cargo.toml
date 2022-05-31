@@ -7,7 +7,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tokio = { version = "1.15.0", features = ["full"] }
+tokio = { version = "1.17.0", features = ["full"] }
 warp = "0.3"
 tokio-stream = "0.1.6"
 futures = { version = "0.3", default-features=false }
@@ -17,7 +17,7 @@ serde_derive = "1.0.117"
 serde_json = "1.0.59"
 libc = "*"
 regex = "1.5.4"
-rcon-rs = "0.1.0"
+rcon-rs = { git = "https://github.com/notseanray/rcon-rs" } 
 sysinfo = "0.22.3"
 evalexpr = "7.0.0"
 chrono = "0.4.0"

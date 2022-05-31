@@ -1,12 +1,12 @@
 use crate::{utils::Sys, ws::CONFIG};
-use chrono::{DateTime, Local, Datelike, Timelike};
+use chrono::{DateTime, Datelike, Local, Timelike};
 use serde_derive::{Deserialize, Serialize};
 use std::{
-    path::PathBuf,
     fs,
-    time::{SystemTime, Instant, Duration},
+    path::PathBuf,
+    time::{Duration, Instant, SystemTime},
 };
-use tokio::{process::Command, fs::remove_file};
+use tokio::{fs::remove_file, process::Command};
 
 // options for a session running a server that contains a chat bridge
 #[derive(Serialize, Deserialize, Clone)]
@@ -20,55 +20,71 @@ pub(crate) struct Game {
 
 impl Game {
     pub(crate) fn copy_region(&self, dim: &str, x: i32, y: i32) -> String {
-        if self.file_path.is_none() || CONFIG.webserver_location.is_none() || CONFIG.webserver_prefix.is_none() {
+        if self.file_path.is_none()
+            || CONFIG.webserver_location.is_none()
+            || CONFIG.webserver_prefix.is_none()
+        {
             return "webserver not configured".to_owned();
         }
-        let webserver_location = PathBuf::from(CONFIG.webserver_location.unwrap())
-            .join(PathBuf::from("region"));
-        if !webserver_location.exists() {
-            if let Err(_) = fs::create_dir_all(webserver_location) {
+        if let Some(ws_l) = &CONFIG.webserver_location {
+            let webserver_location = PathBuf::from(ws_l).join(PathBuf::from("region"));
+            if !webserver_location.exists() && fs::create_dir_all(&webserver_location).is_err() {
                 return "Unable to create region folder".to_owned();
+            }
+            let dim_folder = match dim {
+                "OW" => "/region",
+                "NETHER" => "/DIM-1/region",
+                "END" => "/DIM1/region",
+                _ => return "Unexpected region".to_owned(),
             };
+            let region_name = format!("r.{x}.{y}.mca");
+
+            if let Some(fp) = &self.file_path {
+                let full_path = PathBuf::from(fp)
+                    .join(PathBuf::from(dim_folder))
+                    .join(PathBuf::from(&region_name));
+                if !full_path.exists() {
+                    return "Region does not exists".to_owned();
+                }
+                if fs::copy(full_path, webserver_location).is_err() {
+                    return "Failed to copy region into webserver folder".to_owned();
+                }
+                if let Some(ws_p) = &CONFIG.webserver_prefix {
+                    return format!("{}/region/{region_name}", ws_p);
+                }
+            }
         }
-        let dim_folder = match dim {
-            "OW" => "/region",
-            "NETHER" => "/DIM-1/region",
-            "END" => "/DIM1/region",
-        };
-        let region_name = format!("r.{x}.{y}.mca");
-        let full_path = PathBuf::from(self.file_path.unwrap())
-            .join(PathBuf::from(dim_folder))
-            .join(PathBuf::from(region_name));
-        if !full_path.exists() {
-            return "Region does not exists".to_owned();
-        }
-        if let Err(_) = fs::copy(full_path, webserver_location) {
-            return "Failed to copy region into webserver folder".to_owned(); 
-        }
-        format!("{}/region/{region_name}", CONFIG.webserver_prefix.unwrap())
+        "no file path specified".to_string()
     }
 
     pub(crate) fn copy_structure(&self, name: &str) -> String {
-        if self.file_path.is_none() || CONFIG.webserver_location.is_none() || CONFIG.webserver_prefix.is_none() {
+        if self.file_path.is_none()
+            || CONFIG.webserver_location.is_none()
+            || CONFIG.webserver_prefix.is_none()
+        {
             return "webserver not configured".to_owned();
         }
-        let webserver_location = PathBuf::from(CONFIG.webserver_location.unwrap())
-            .join(PathBuf::from("structure"));
-        if !webserver_location.exists() {
-            if let Err(_) = fs::create_dir_all(webserver_location) {
+        if let Some(ws_l) = &CONFIG.webserver_location {
+            let webserver_location = PathBuf::from(ws_l).join(PathBuf::from("structure"));
+            if !webserver_location.exists() && fs::create_dir_all(&webserver_location).is_err() {
                 return "Unable to create region folder".to_owned();
-            };
+            }
+            if let Some(fp) = &self.file_path {
+                let structure = PathBuf::from(fp)
+                    .join(PathBuf::from("structure"))
+                    .join(PathBuf::from(name));
+                if !structure.exists() {
+                    return "Structure does not exists".to_owned();
+                }
+                if fs::copy(structure, webserver_location).is_err() {
+                    return "Failed to copy structure into webserver folder".to_owned();
+                }
+            }
+            if let Some(ws_p) = &CONFIG.webserver_prefix {
+                return format!("{}/structure/{name}", ws_p);
+            }
         }
-        let structure = PathBuf::from(self.file_path.unwrap())
-            .join(PathBuf::from("structure"))
-            .join(PathBuf::from(name));
-        if !structure.exists() {
-            return "Structure does not exists".to_owned();
-        }
-        if let Err(_) = fs::copy(structure, webserver_location) {
-            return "Failed to copy structure into webserver folder".to_owned(); 
-        }
-        format!("{}/structure/{name}", CONFIG.webserver_prefix.unwrap())
+        "no file path specified".to_string()
     }
 
     #[inline(always)]
@@ -82,24 +98,28 @@ impl Game {
     }
 
     pub(crate) fn list_structures(&self) -> String {
-        let structures = match PathBuf::from(self.file_path.unwrap())
-            .join(PathBuf::from("structure")).read_dir() {
+        if let Some(fp) = &self.file_path {
+            let structures = match PathBuf::from(fp)
+                .join(PathBuf::from("structure"))
+                .read_dir()
+            {
                 Ok(v) => v,
                 Err(_) => return "Unable to access structure folder".to_owned(),
             };
-        let mut response = Vec::new();
-        for file in structures {
-            if let Ok(v) = file {
-                if let Ok(m) = v.metadata() {
-                    response.push(format!("{} ({})", 
-                      v.file_name()
-                      .to_string_lossy()
-                      .to_string(), Self::bytes_to_human(m.len())));
+            let mut response = Vec::new();
+            for file in structures.flatten() {
+                if let Ok(m) = file.metadata() {
+                    response.push(format!(
+                        "{} ({})",
+                        file.file_name().to_string_lossy(),
+                        Self::bytes_to_human(m.len())
+                    ));
                 }
             }
-        } 
-        response.sort();
-        response.join("\n")
+            response.sort();
+            return response.join("\n");
+        }
+        "no configured file path".to_string()
     }
 
     pub(crate) async fn backup(&self, sys: &Sys, name: &str, backup_location: &str) -> String {
@@ -109,30 +129,35 @@ impl Game {
         if !sys.sys_health_check() {
             return "Backup aborted due to system constraints".to_owned();
         }
-        let cwd = PathBuf::from(self.file_path.clone().unwrap());
+        let cwd = PathBuf::from(backup_location);
         let mut cwd = cwd.iter();
         cwd.next_back();
         let now: DateTime<Local> = Local::now();
-        let backup_name = &format!("{name}_{:0>4}-{:0>2}-{:0>2}_{:0>2}_{:0>2}_{:0>2}.tar.gz", 
-                                   now.year(), 
-                                   now.month(), 
-                                   now.day(),
-                                   now.hour(),
-                                   now.minute(),
-                                   now.second());
+        let backup_name = &format!(
+            "{name}_{:0>4}-{:0>2}-{:0>2}_{:0>2}_{:0>2}_{:0>2}.tar.gz",
+            now.year(),
+            now.month(),
+            now.day(),
+            now.hour(),
+            now.minute(),
+            now.second()
+        );
         let start = Instant::now();
         let _ = Command::new("tar")
             .current_dir(cwd.as_path())
-            .args(["-czf", backup_name])
+            .args(["-czf", backup_name, &self.file_path.clone().unwrap()])
             .kill_on_drop(true)
             .status()
             .await;
-        format!("finished in {:.2} seconds", start.elapsed().as_millis() as f32 / 1000.0)
+        format!(
+            "finished in {:.2} seconds",
+            start.elapsed().as_millis() as f32 / 1000.0
+        )
     }
 }
 
-pub(crate) fn delete_backups_older_than(name: &str, time: u64) {
-    let dir = PathBuf::from(CONFIG.backup_location);
+pub(crate) async fn delete_backups_older_than(name: &str, time: u64) {
+    let dir = PathBuf::from(&CONFIG.backup_location);
     if !dir.exists() {
         return;
     }
@@ -140,34 +165,32 @@ pub(crate) fn delete_backups_older_than(name: &str, time: u64) {
         Ok(v) => v,
         Err(_) => return,
     };
-    for backup in backups {
-        if let Ok(v) = backup {
-            let fname = v.file_name().to_string_lossy().to_string();
-            if name != "_" && (fname.len() > name.len() && &fname[..name.len()] == name) {
-                continue;
-            }
-            if let Ok(m) = v.metadata() {
-                let creation = match m.created() {
-                    Ok(v) => v,
-                    Err(_) => continue,
-                };
-                let elapsed = match SystemTime::now().duration_since(creation) {
-                    Ok(v) => v,
-                    Err(_) => continue,
-                };
-                if elapsed > Duration::from_secs(time) {
-                    remove_file(dir);
-                }
+    for backup in backups.flatten() {
+        let fname = backup.file_name().to_string_lossy().to_string();
+        if name != "_" && (fname.len() > name.len() && &fname[..name.len()] == name) {
+            continue;
+        }
+        if let Ok(m) = backup.metadata() {
+            let creation = match m.created() {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            let elapsed = match SystemTime::now().duration_since(creation) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            if elapsed > Duration::from_secs(time) {
+                let _ = remove_file(&dir).await;
             }
         }
-    } 
+    }
 }
 
 pub(crate) fn list_backups() -> String {
-    let dir = PathBuf::from(CONFIG.backup_location);
+    let dir = PathBuf::from(&CONFIG.backup_location);
     if !dir.exists() {
-        match fs::create_dir_all(CONFIG.backup_location) {
-            Ok(_) => {},
+        match fs::create_dir_all(&CONFIG.backup_location) {
+            Ok(_) => {}
             Err(_) => return "Unable to create backup directory".to_owned(),
         };
         return "No backups stored at this time".to_owned();
@@ -177,19 +200,23 @@ pub(crate) fn list_backups() -> String {
         Err(_) => return "Unable to access backup directory".to_string(),
     };
     let mut response = Vec::new();
-    for backup in backups {
-        if let Ok(v) = backup {
-            if !v.file_name().to_string_lossy().to_string().contains("tar.gz") {
-                continue;
-            }
-            if let Ok(m) = v.metadata() {
-                response.push(format!("{} ({})", 
-                  v.file_name()
-                  .to_string_lossy()
-                  .to_string(), Game::bytes_to_human(m.len())));
-            }
+    for backup in backups.flatten() {
+        if !backup
+            .file_name()
+            .to_string_lossy()
+            .to_string()
+            .contains("tar.gz")
+        {
+            continue;
         }
-    } 
+        if let Ok(m) = backup.metadata() {
+            response.push(format!(
+                "{} ({})",
+                backup.file_name().to_string_lossy(),
+                Game::bytes_to_human(m.len())
+            ));
+        }
+    }
     response.sort();
     response.join("\n")
 }

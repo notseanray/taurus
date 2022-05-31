@@ -1,6 +1,6 @@
 use crate::{
-    bridge::{Session, Bridge},
     backup::list_backups,
+    bridge::{Bridge, Session},
     config::Config,
     info,
     utils::{Clients, Result, Sys, WsClient},
@@ -9,7 +9,9 @@ use crate::{
 use futures::{FutureExt, StreamExt};
 use serde_json::json;
 use std::env;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::Mutex;
 use tokio::{process::Command, sync::mpsc};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
@@ -17,8 +19,6 @@ use warp::{
     ws::{Message, WebSocket},
     Reply,
 };
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
 lazy_static::lazy_static! {
     static ref CONFIG_PATH: String = {
@@ -67,7 +67,7 @@ pub(crate) async fn client_connection(ws: WebSocket, clients: Clients) {
 async fn client_msg(client_id: &str, msg: Message, clients: Clients) {
     let msg = match msg.to_str() {
         Ok(v) => v,
-        Err(_) => return
+        Err(_) => return,
     };
     let mut locked = clients.lock().await;
     if let Some(mut v) = locked.get_mut(client_id) {
@@ -124,11 +124,11 @@ async fn handle_response(message: &str) -> Option<String> {
             };
             // TODO
             // replace with tmux json + cleanse input
-            Session::send_chat_to_clients(&SESSIONS, in_game_message);
+            Session::send_chat_to_clients(&SESSIONS, in_game_message).await;
             None
         }
         "LIST" => {
-            Session::send_chat_to_clients(&SESSIONS, "list");
+            Session::send_chat_to_clients(&SESSIONS, "list").await;
             None
         }
         "CP_REGION" => {
@@ -138,11 +138,11 @@ async fn handle_response(message: &str) -> Option<String> {
             };
             let args: Vec<&str> = args.split_whitespace().collect();
             if args.len() != 4 {
-                return Some("Invalid Arguments".into()); 
+                return Some("Invalid Arguments".into());
             }
             let (x, y): (i32, i32) = match (args[2].parse(), args[3].parse()) {
                 (Ok(v), Ok(e)) => (v, e),
-                _ => return Some("Invalid Region Identifier".into())
+                _ => return Some("Invalid Region Identifier".into()),
             };
             let dim_arg = args[1].to_uppercase();
             let dim = match dim_arg.as_str() {
@@ -160,6 +160,44 @@ async fn handle_response(message: &str) -> Option<String> {
             }
             Some(response)
         }
+        "LIST_BRIDGES" => {
+            let locked = BRIDGES.lock().await;
+            let mut response = Vec::with_capacity(locked.len());
+            for bridge in &*locked {
+                let state = match bridge.enabled {
+                    Some(true) => "true",
+                    Some(false) => "false",
+                    _ => "disabled"
+                };
+                response.push(format!("Name: {} State: {state}", bridge.name));
+            }
+            Some(response.join("\n"))
+        }
+        "TOGGLE_BRIDGE" => {
+            let (_, args) = match get_cmd(message) {
+                Some(v) => v,
+                None => return None,
+            };
+            let args: Vec<&str> = args.split_whitespace().collect();
+            if args.len() != 1 {
+                return Some("Invalid Arguments".to_owned());
+            }
+            let mut locked = BRIDGES.lock().await;
+            let mut changed = false;
+            for bridge in &mut *locked {
+                if bridge.name == args[0] {
+                    if let Some(v) = bridge.enabled {
+                        bridge.enabled = Some(!v);
+                        changed = true;
+                    }
+                }
+            }
+            Some((if changed {
+                "Toggled state" 
+            } else {
+                "Session not found"
+            }).to_owned())
+        }
         "CMD" => {
             let command_index = match command_index {
                 Some(v) => v,
@@ -172,6 +210,29 @@ async fn handle_response(message: &str) -> Option<String> {
             Session::send_command(target, cmd);
             None
         }
+        "RCON" => {
+            let command_index = match command_index {
+                Some(v) => v,
+                None => return Some("invalid command".to_string()),
+            };
+            let (target, cmd) = match get_cmd(&message[command_index + 1..]) {
+                Some(v) => v,
+                None => return None,
+            };
+            let mut response = String::new();
+            for session in &*SESSIONS {
+                if session.name != target {
+                    continue;
+                }
+                if let Some(v) = &session.rcon {
+                    response = match v.rcon_send_with_response(cmd).await {
+                        Ok(Some(x)) => x,
+                        _ => continue,
+                    };
+                }
+            }
+            Some(response)
+        }
         "CP_STRUCTURE" => {
             let (_, args) = match get_cmd(message) {
                 Some(v) => v,
@@ -179,7 +240,7 @@ async fn handle_response(message: &str) -> Option<String> {
             };
             let args: Vec<&str> = args.split_whitespace().collect();
             if args.len() != 2 {
-                return Some("Invalid Arguments".into()); 
+                return Some("Invalid Arguments".into());
             }
             let mut response = String::new();
             for session in &*SESSIONS {
@@ -199,7 +260,7 @@ async fn handle_response(message: &str) -> Option<String> {
             };
             let args: Vec<&str> = args.split_whitespace().collect();
             if args.len() != 1 {
-                return Some("Invalid Arguments".into()); 
+                return Some("Invalid Arguments".into());
             }
             let mut response = String::new();
             for session in &*SESSIONS {

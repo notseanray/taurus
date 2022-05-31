@@ -56,7 +56,6 @@ pub(crate) fn check_exist(dir: &str) -> bool {
     PathBuf::from(dir.to_string()).exists()
 }
 
-#[derive(Clone)]
 pub(crate) struct WsClient {
     pub client_id: String,
     pub sender: Option<mpsc::UnboundedSender<std::result::Result<Message, warp::Error>>>,
@@ -105,9 +104,9 @@ impl Sys {
 
     pub(crate) fn sys_health_check(&self) -> bool {
         let ram = self.ram;
-        if ram.0 as f64 / ram.1 as f64 > 0.85 || 
-            self.cpu_avg.1 > 0.7 || 
-            Self::check_disk(&self.sys).is_some() 
+        if ram.0 as f64 / ram.1 as f64 > 0.85
+            || self.cpu_avg.1 > 0.7
+            || Self::check_disk(&self.sys).is_some()
         {
             return true;
         }
