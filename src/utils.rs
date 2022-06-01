@@ -1,6 +1,5 @@
-use libc::{c_int, pid_t};
 use std::fmt;
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 use sysinfo::{DiskExt, System, SystemExt};
 use tokio::sync::{mpsc, Mutex};
 use warp::{ws::Message, Rejection};
@@ -38,26 +37,7 @@ macro_rules! error {
     };
 }
 
-extern "C" {
-    pub fn waitpid(pid: pid_t, stat_loc: *mut c_int, options: c_int) -> pid_t;
-}
-
-// std::Command can leave behind zombie processes that buid up over time
-#[inline]
-pub(crate) fn reap() {
-    unsafe {
-        waitpid(-1, std::ptr::null_mut(), 0x00000001);
-    }
-}
-
-// function to check if the file or folder exist
-#[inline]
-pub(crate) fn check_exist(dir: &str) -> bool {
-    PathBuf::from(dir.to_string()).exists()
-}
-
 pub(crate) struct WsClient {
-    pub client_id: String,
     pub sender: Option<mpsc::UnboundedSender<std::result::Result<Message, warp::Error>>>,
     pub authed: bool,
 }

@@ -1,14 +1,15 @@
 const WebSocket = require('ws')
-const url = 'ws://localhost:7500/lupus'
+const url = 'ws://192.168.1.95:12053/taurus'
 const connection = new WebSocket(url)
 
 console.log("sending", "ping")
 
 connection.onopen = () => {
-	connection.send("PING") 
-	connection.send("PING") 
-	connection.send("PING") 
-	connection.send("PING") 
+	connection.send("A") 
+	connection.send("") 
+	connection.send("test")
+	connection.send("LIST_BACKUPS")
+	connection.send("PING")
 }
 
 connection.onerror = (error) => {

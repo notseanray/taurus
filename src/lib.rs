@@ -58,7 +58,7 @@ pub async fn run() {
         }
         // TODO
         // add docker support for piping
-        match session.host.as_str() {
+        match session.host.as_str().trim() {
             "tmux" => gen_pipe(&session.name, false).await,
             _ => {}
         };
@@ -67,7 +67,7 @@ pub async fn run() {
             None => None,
         };
         // Wait for tmux to generate the pipe
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        tokio::time::sleep(Duration::from_millis(5)).await;
         let mut locked = BRIDGES.lock().await;
         locked.push(Bridge {
             name: name.to_string(),
@@ -122,7 +122,7 @@ pub async fn run() {
                         continue;
                     }
                     if clock % game.backup_interval.unwrap() == 0 {
-                        let _ = game.backup(&sys, &i.name, &CONFIG.backup_location);
+                        let _ = game.backup(&sys, &i.name, &CONFIG.backup_location).await;
                         if let Some(v) = game.backup_keep {
                             delete_backups_older_than(&i.name, v).await;
                         }
@@ -133,7 +133,7 @@ pub async fn run() {
         });
     }
 
-    info!(format!("manager loaded in: {:#?}, ", startup.elapsed()));
+    info!(format!("manager loaded in: {} ms, ", startup.elapsed().as_millis()));
 
     info!(format!(
         "starting websocket server on {}:{}",

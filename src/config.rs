@@ -1,9 +1,11 @@
-use crate::{bridge::Session, error, exit, utils::check_exist};
+use crate::ws::SESSIONS;
+use crate::{bridge::Session, error, exit};
 use serde_derive::{Deserialize, Serialize};
 use serde_json::from_str;
 use std::path::PathBuf;
 use std::{fs, fs::File};
 use rcon_rs::Client;
+use tokio::process::Command;
 
 // main config
 #[derive(Deserialize)]
@@ -24,10 +26,34 @@ pub(crate) struct Config {
 #[derive(Deserialize)]
 pub(crate) struct Script {
     pub description: String,
-    pub interval: u64,
-    pub absolute: u64,
-    pub shell_cmd: String,
-    pub mc_cmd: String,
+    pub interval: Option<u64>,
+    pub start_unix: Option<u64>,
+    pub shell_cmd: Option<String>,
+    pub session_name: Option<String>,
+    pub rcon_cmd: Option<String>,
+}
+
+impl Script {
+    pub(crate) async fn run(&self) {
+        if let Some(rc) = &self.rcon_cmd {
+            if let Some(sn) = &self.session_name {
+                for session in &*SESSIONS {
+                    if &session.name != sn {
+                        continue;
+                    }
+                    if let Some(r) = &session.rcon {
+                        let _ = r.rcon_send(rc).await;
+                    }
+                } 
+            }
+        }
+        if let Some(v) = &self.shell_cmd {
+            let shell_command: Vec<&str> = v.split_whitespace().collect();
+            let _ = Command::new(shell_command[0])
+                .args(&shell_command[1..])
+                .spawn();
+        }
+    }
 }
 
 // The ip being None defaults to localhost
@@ -71,7 +97,7 @@ impl Config {
     {
         let path = path.to_string();
         let config_path = &(path.to_owned() + "/config.json");
-        if !check_exist(config_path) {
+        if !PathBuf::from(config_path).exists() {
             Config::default(&path);
             Config::default_root_cfg(path.to_owned());
         }
@@ -83,7 +109,7 @@ impl Config {
                 error!(e);
                 eprintln!("*info: generating default config");
                 Config::default_root_cfg(path.to_owned());
-                if !check_exist(config_path) {
+                if !PathBuf::from(config_path).exists() {
                     error!("could not read just generated config, exiting");
                     exit!();
                 }
@@ -131,7 +157,7 @@ impl Config {
     }
 
     pub(crate) fn load_sessions(path: String) -> Vec<Session> {
-        if !check_exist(&(path.to_owned() + "/servers/")) {
+        if !PathBuf::from(&(path.to_owned() + "/servers/")).exists() {
             Self::default(&path);
         }
 

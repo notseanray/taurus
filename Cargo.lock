@@ -922,7 +922,6 @@ dependencies = [
  "evalexpr",
  "futures",
  "lazy_static",
- "libc",
  "rcon-rs",
  "regex",
  "serde",

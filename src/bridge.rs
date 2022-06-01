@@ -1,11 +1,11 @@
 use crate::{
     backup::Game,
     config::Rcon,
-    utils::{check_exist, reap}, ws::BRIDGES,
+    ws::BRIDGES,
 };
 use regex::Regex;
 use serde_derive::{Deserialize, Serialize};
-use std::fs::{self, File};
+use std::{fs::{self, File}, path::PathBuf};
 use std::io::{BufRead, BufReader};
 use tokio::process::Command;
 
@@ -25,11 +25,14 @@ pub(crate) async fn update_messages(server: &mut Bridge, pattern: &Regex) -> Opt
         return None;
     }
     let file_path: String = format!("/tmp/{}-taurus", server.name);
-    if !check_exist(&file_path) {
+    if !PathBuf::from(&file_path).exists() {
         gen_pipe(&server.name, false).await;
         return None;
     }
-    let reader = BufReader::new(File::open(file_path).unwrap());
+    let reader = BufReader::new(match File::open(file_path) {
+        Ok(v) => v,
+        Err(_) => return None,
+    });
     let mut message = String::new();
     let mut cur_line: usize = server.line;
     for (i, line) in reader.lines().enumerate() {
@@ -47,11 +50,13 @@ pub(crate) async fn update_messages(server: &mut Bridge, pattern: &Regex) -> Opt
         let mut message_out = String::new();
         let message_chars = line.chars().collect::<Vec<char>>();
         message_chars.iter().for_each(|c| message_out.push(*c));
-        if let Some(true) = server.enabled {
-            if !server.state && &message_out[10..33] == " [Server thread/INFO]: " {
-                server.state = true;
-            } else {
-                return None;
+        if message_chars.len() < 34 {
+            if let Some(true) = server.enabled {
+                if !server.state && &message_out[10..33] == " [Server thread/INFO]: " {
+                    server.state = true;
+                } else {
+                    return None;
+                }
             }
         }
         if pattern.is_match(&line) {
@@ -93,7 +98,10 @@ pub(crate) async fn update_messages(server: &mut Bridge, pattern: &Regex) -> Opt
 // set the initial hashmap value of lines so only new lines are sent
 pub fn set_lines(server_name: &str) -> usize {
     let server_name = server_name.to_string();
-    let file = File::open(&format!("/tmp/{server_name}-taurus")).unwrap();
+    let file = match File::open(&format!("/tmp/{server_name}-taurus")) {
+        Ok(v) => v,
+        Err(_) => return 0,
+    };
     let reader = BufReader::new(file);
 
     reader.lines().count()
@@ -123,11 +131,7 @@ pub async fn gen_pipe(server_name: &str, rm: bool) {
 
     let _ = Command::new("tmux")
         .args(["pipe-pane", "-t", server_name, &format!("cat > {pipe}")])
-        .kill_on_drop(true)
         .spawn();
-
-    // clean up zombies
-    reap();
 }
 
 // store configuration for each session, description is purely for telling what it is
@@ -142,21 +146,20 @@ pub(crate) struct Session {
 
 impl Session {
     // send messages to all servers with a 'game' session
-    pub(crate) fn send_chat(&self, rcon: Option<&Rcon>, message: &str) {
+    pub(crate) async fn send_chat(&self, rcon: Option<&Rcon>, message: &str) {
         let lines: Vec<&str> = message.lines().collect();
         for line in lines {
-            let line = &line.replace("MSG ", "");
             let pos = line.find(']').unwrap_or(0);
             let msg = match Self::clear_formatting(line) {
                 Some(v) => v,
                 None => continue,
             };
-            if pos != 0 && line[1..pos] == self.name || self.game.is_none() {
+            if pos != 0 && (line[1..pos] == self.name || self.game.is_none()) {
                 continue;
             }
-            let message = format!(r#"tellraw @a {{ "text": "{}" }}"#, msg);
+            let message = format!("tellraw @a {{ \"text\": \"{msg}\" }}");
             if let Some(v) = rcon {
-                let _ = v.rcon_send(&message);
+                let _ = v.rcon_send(&message).await;
                 continue;
             }
             Self::send_command(
@@ -172,7 +175,7 @@ impl Session {
                 let locked = BRIDGES.lock().await;
                 for bridge in &*locked {
                     if bridge.name == client.name && v.chat_bridge == Some(true) && bridge.state {
-                        Self::send_chat(client, client.rcon.as_ref(), message);
+                        Self::send_chat(client, client.rcon.as_ref(), message).await;
                     }
                 }
             } 

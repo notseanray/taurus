@@ -45,7 +45,6 @@ pub(crate) async fn client_connection(ws: WebSocket, clients: Clients) {
     }));
     let uuid = Uuid::new_v4().to_simple().to_string();
     let new_client = WsClient {
-        client_id: uuid.clone(),
         sender: Some(client_sender),
         authed: false,
     };
@@ -128,8 +127,40 @@ async fn handle_response(message: &str) -> Option<String> {
             None
         }
         "LIST" => {
-            Session::send_chat_to_clients(&SESSIONS, "list").await;
-            None
+            let mut lists = Vec::new();
+            for session in &*SESSIONS {
+                if let Some(v) = &session.rcon {
+                    lists.push(match v.rcon_send_with_response("list").await {
+                        Ok(Some(v)) => v,
+                        _ => continue,
+                    });
+                }
+            }
+            Some(format!("LIST {}", lists.join("\n")))
+        }
+        "BACKUP" => {
+            let (_, target) = match get_cmd(message) {
+                Some(v) => v,
+                None => return None,
+            };
+            let mut set = false;
+            let mut response = String::new();
+            for session in &*SESSIONS {
+                if session.name != target {
+                    continue;
+                }
+                if let Some(v) = &session.game {
+                    set = true;
+                    let mut sys = Sys::new();
+                    sys.refresh();
+                    response = v.backup(&sys, target, &CONFIG.backup_location).await;
+                }
+            }
+            if set {
+                Some(format!("BACKUP {response}"))
+            } else {
+                Some("BACKUP Invalid Session Target".to_owned())
+            }
         }
         "CP_REGION" => {
             let (_, args) = match get_cmd(message) {
@@ -138,16 +169,16 @@ async fn handle_response(message: &str) -> Option<String> {
             };
             let args: Vec<&str> = args.split_whitespace().collect();
             if args.len() != 4 {
-                return Some("Invalid Arguments".into());
+                return Some("CP_REGION Invalid Arguments".into());
             }
             let (x, y): (i32, i32) = match (args[2].parse(), args[3].parse()) {
                 (Ok(v), Ok(e)) => (v, e),
-                _ => return Some("Invalid Region Identifier".into()),
+                _ => return Some("CP_REGION Invalid Region Identifier".into()),
             };
             let dim_arg = args[1].to_uppercase();
             let dim = match dim_arg.as_str() {
                 "OW" | "NETHER" | "END" => &dim_arg,
-                _ => return Some("Invalid Dimension Provided".into()),
+                _ => return Some("CP_REGION Invalid Dimension Provided".into()),
             };
             let mut response = String::new();
             for session in &*SESSIONS {
@@ -158,7 +189,7 @@ async fn handle_response(message: &str) -> Option<String> {
                     response = v.copy_region(dim, x, y);
                 }
             }
-            Some(response)
+            Some(format!("CP_REGION {response}"))
         }
         "LIST_BRIDGES" => {
             let locked = BRIDGES.lock().await;
@@ -171,7 +202,7 @@ async fn handle_response(message: &str) -> Option<String> {
                 };
                 response.push(format!("Name: {} State: {state}", bridge.name));
             }
-            Some(response.join("\n"))
+            Some(format!("LIST_BRIDGES {}", response.join("\n")))
         }
         "TOGGLE_BRIDGE" => {
             let (_, args) = match get_cmd(message) {
@@ -180,7 +211,7 @@ async fn handle_response(message: &str) -> Option<String> {
             };
             let args: Vec<&str> = args.split_whitespace().collect();
             if args.len() != 1 {
-                return Some("Invalid Arguments".to_owned());
+                return Some("TOGGLE_BRIDGE Invalid Arguments".to_owned());
             }
             let mut locked = BRIDGES.lock().await;
             let mut changed = false;
@@ -193,15 +224,15 @@ async fn handle_response(message: &str) -> Option<String> {
                 }
             }
             Some((if changed {
-                "Toggled state" 
+                "TOGGLE_BRIDGE Toggled state" 
             } else {
-                "Session not found"
+                "TOGGLE_BRIDGE Session not found"
             }).to_owned())
         }
         "CMD" => {
             let command_index = match command_index {
                 Some(v) => v,
-                None => return Some("invalid command".to_string()),
+                None => return Some("CMD invalid command".to_string()),
             };
             let (target, cmd) = match get_cmd(&message[command_index + 1..]) {
                 Some(v) => v,
@@ -213,7 +244,7 @@ async fn handle_response(message: &str) -> Option<String> {
         "RCON" => {
             let command_index = match command_index {
                 Some(v) => v,
-                None => return Some("invalid command".to_string()),
+                None => return Some("RCON invalid command".to_string()),
             };
             let (target, cmd) = match get_cmd(&message[command_index + 1..]) {
                 Some(v) => v,
@@ -231,7 +262,7 @@ async fn handle_response(message: &str) -> Option<String> {
                     };
                 }
             }
-            Some(response)
+            Some(format!("RCON {response}"))
         }
         "CP_STRUCTURE" => {
             let (_, args) = match get_cmd(message) {
@@ -240,7 +271,7 @@ async fn handle_response(message: &str) -> Option<String> {
             };
             let args: Vec<&str> = args.split_whitespace().collect();
             if args.len() != 2 {
-                return Some("Invalid Arguments".into());
+                return Some("CP_STRUCTURE Invalid Arguments".into());
             }
             let mut response = String::new();
             for session in &*SESSIONS {
@@ -251,7 +282,7 @@ async fn handle_response(message: &str) -> Option<String> {
                     response = v.copy_structure(args[1]);
                 }
             }
-            Some(response)
+            Some(format!("CP_STRUCTURE {response}"))
         }
         "LIST_STRUCTURES" => {
             let (_, args) = match get_cmd(message) {
@@ -260,7 +291,7 @@ async fn handle_response(message: &str) -> Option<String> {
             };
             let args: Vec<&str> = args.split_whitespace().collect();
             if args.len() != 1 {
-                return Some("Invalid Arguments".into());
+                return Some("LIST_STRUCTURES Invalid Arguments".into());
             }
             let mut response = String::new();
             for session in &*SESSIONS {
@@ -271,13 +302,13 @@ async fn handle_response(message: &str) -> Option<String> {
                     response = v.list_structures();
                 }
             }
-            Some(response)
+            Some(format!("LIST_STRUCTURES {response}"))
         }
         "LIST_BACKUPS" => Some(list_backups()),
         "RESTART" => {
             let script_path = match RESTART_SCRIPT.to_owned() {
                 Some(v) => v,
-                None => return Some("no restart script found".to_string()),
+                None => return Some("RESTART no restart script found".to_string()),
             };
             let restart = Command::new("sh")
                 .args(["-c", &script_path])
@@ -286,9 +317,9 @@ async fn handle_response(message: &str) -> Option<String> {
                 .await
                 .expect("could not execute restart script");
             if restart.success() {
-                return Some("restarting...".to_string());
+                return Some("RESTART restarting...".to_string());
             }
-            Some("failed to execute restart script".to_string())
+            Some("RESTART failed to execute restart script".to_string())
         }
         "LIST_SESSIONS" => Some(json!(*SESSIONS.clone()).to_string()),
         "SHELL" => {
@@ -305,8 +336,8 @@ async fn handle_response(message: &str) -> Option<String> {
             let _ = Command::new(command).args(args).kill_on_drop(true).spawn();
             None
         }
-        "HEARTBEAT" => Some(format!("{}", Sys::new().sys_health_check())),
-        "CHECK" => Some(format!("{}", Sys::new())),
+        "HEARTBEAT" => Some(format!("HEARTBEAT {}", Sys::new().sys_health_check())),
+        "CHECK" => Some(format!("CHECK {}", Sys::new())),
         "PING" => {
             let time = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
