@@ -1,7 +1,7 @@
 use crate::{
     backup::Game,
     config::Rcon,
-    ws::BRIDGES,
+    ws::SESSIONS,
 };
 use regex::Regex;
 use serde_derive::{Deserialize, Serialize};
@@ -34,25 +34,24 @@ pub(crate) async fn update_messages(server: &mut Bridge, pattern: &Regex) -> Opt
         Err(_) => return None,
     });
     let mut message = String::new();
-    let mut cur_line: usize = server.line;
     for (i, line) in reader.lines().enumerate() {
         // assign the real number of lines, if the file is empty lines returns 0 by default
         // if there is 1 line, there is still 0 lines due to it being 0 indexed
         let real = i + 1;
-        if cur_line <= real {
+        if real <= server.line {
             continue;
         }
+        server.line = real;
         let line = match line {
             Ok(v) => v,
             Err(_) => continue,
         };
-        cur_line = real;
-        let mut message_out = String::new();
+        let mut message_out = String::with_capacity(line.len());
         let message_chars = line.chars().collect::<Vec<char>>();
         message_chars.iter().for_each(|c| message_out.push(*c));
-        if message_chars.len() < 34 {
+        if message_chars.len() < 34 && !server.state {
             if let Some(true) = server.enabled {
-                if !server.state && &message_out[10..33] == " [Server thread/INFO]: " {
+                if &message_out[10..33] == " [Server thread/INFO]: " {
                     server.state = true;
                 } else {
                     return None;
@@ -64,7 +63,7 @@ pub(crate) async fn update_messages(server: &mut Bridge, pattern: &Regex) -> Opt
             message.push_str(&format!("[{}] {}\n", server.name, &message_out[33..]));
             continue;
         }
-        if message_out.len() > 43 && &message_out[10..33] == " [Server thread/INFO]: " {
+        if message_out.len() > 52 && &message_out[10..33] == " [Server thread/INFO]: " {
             let list_message: Vec<&str> = (&message_out[33..]).split_ascii_whitespace().collect();
             if let Some(true) = server.enabled {
                 if &message_out[33..52] == "Stopping the server" {
@@ -79,7 +78,7 @@ pub(crate) async fn update_messages(server: &mut Bridge, pattern: &Regex) -> Opt
         }
     }
     // if the log file is above 8k we can reset it to prevent parsing time from building up
-    if cur_line > 8000 {
+    if server.line > 8000 {
         // reset pipe file and notify
         gen_pipe(&server.name, true).await;
         server.line = 0;
@@ -88,7 +87,6 @@ pub(crate) async fn update_messages(server: &mut Bridge, pattern: &Regex) -> Opt
             _ => None,
         };
     }
-    server.line = cur_line;
     match message.len() {
         3.. => Some(message),
         _ => None,
@@ -109,12 +107,12 @@ pub fn set_lines(server_name: &str) -> usize {
 
 // remove formatting when sending messages to discord
 #[inline(always)]
-pub fn replace_formatting(msg: &str) -> impl ToString {
-    // regex to replace any '§' followed by digits with a blank space, from MC color codes
-    let replacements = Regex::new(r"§.*\d").unwrap();
-    replacements.replace_all(msg, "").to_owned().to_string();
+pub fn replace_formatting(msg: &str) -> String {
+    // regex to replace any '§' and following character, from MC color codes
+    let replacements = Regex::new("§.").unwrap();
+    let msg = replacements.replace_all(msg, "").to_owned().to_string();
     // ideally this would be redone using more regex, if possible, but this works alright for now
-    msg.replace('\n', "\\n")
+    msg.trim_end()
         .replace('\r', "\\r")
         .replace('\"', "\\\"")
         .replace('_', "\\_")
@@ -146,18 +144,23 @@ pub(crate) struct Session {
 
 impl Session {
     // send messages to all servers with a 'game' session
-    pub(crate) async fn send_chat(&self, rcon: Option<&Rcon>, message: &str) {
+    pub(crate) async fn send_chat(&self, rcon: Option<&Rcon>, message: &str, url: bool) {
         let lines: Vec<&str> = message.lines().collect();
         for line in lines {
+            let line = line.replace("MSG ", "");
             let pos = line.find(']').unwrap_or(0);
-            let msg = match Self::clear_formatting(line) {
+            let msg = match Self::clear_formatting(&line) {
                 Some(v) => v,
                 None => continue,
             };
             if pos != 0 && (line[1..pos] == self.name || self.game.is_none()) {
                 continue;
             }
-            let message = format!("tellraw @a {{ \"text\": \"{msg}\" }}");
+            let message = if url {
+                format!("tellraw @a {{ \"text\": \"attachment\", \"clickEvent\":{{ \"action\": \"open_url\", \"value\": \"{msg}\"}} }}")
+            } else {
+                format!("tellraw @a {{ \"text\": \"{msg}\" }}")
+            };
             if let Some(v) = rcon {
                 let _ = v.rcon_send(&message).await;
                 continue;
@@ -169,13 +172,24 @@ impl Session {
         }
     }
 
-    pub(crate) async fn send_chat_to_clients(clients: &[Self], message: &str) {
-        for client in clients {
+    pub(crate) async fn send_chat_to_clients(bridges: &Vec<Bridge>, message: &str) {
+        for client in &*SESSIONS {
             if let Some(v) = &client.game {
-                let locked = BRIDGES.lock().await;
-                for bridge in &*locked {
+                for bridge in bridges {
                     if bridge.name == client.name && v.chat_bridge == Some(true) && bridge.state {
-                        Self::send_chat(client, client.rcon.as_ref(), message).await;
+                        client.send_chat(client.rcon.as_ref(), message, false).await;
+                    }
+                }
+            } 
+        }
+    }
+
+    pub(crate) async fn send_url_to_clients(bridges: &Vec<Bridge>, message: &str) {
+        for client in &*SESSIONS {
+            if let Some(v) = &client.game {
+                for bridge in bridges {
+                    if bridge.name == client.name && v.chat_bridge == Some(true) && bridge.state {
+                        client.send_chat(client.rcon.as_ref(), message, true).await;
                     }
                 }
             } 

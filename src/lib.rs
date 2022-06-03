@@ -31,7 +31,7 @@ pub async fn run() {
         parse_args(ARGS.to_vec());
     }
 
-    let clients: Clients = Arc::new(Mutex::new(HashMap::new()));
+    let clients = Arc::new(Mutex::new(HashMap::new()));
     let ws_route = warp::path("taurus")
         .and(warp::ws())
         .and(with_clients(clients.clone()))
@@ -79,11 +79,12 @@ pub async fn run() {
 
     if SESSIONS.len() > 0 {
         tokio::spawn(async move {
-            let parse_pattern = Regex::new(r"^\[\d{2}:\d{2}:\d{2}\] \[Server thread/INFO\]: (<.*|[\w ]+ (joined|left) the game)$").unwrap();
+            let parse_pattern = Regex::new(r"^\[\d{2}:\d{2}:\d{2}\] \[Server thread/INFO\]: (<.*|[\w §]+ (joined|left) the game)$").unwrap();
+            let bridges = BRIDGES.clone();
             loop {
-                tokio::time::sleep(Duration::from_millis(250)).await;
+                tokio::time::sleep(Duration::from_millis(333)).await;
                 let mut response: Vec<String> = Vec::new();
-                let mut locked = BRIDGES.lock().await;
+                let mut locked = bridges.lock().await;
                 for session in locked.iter_mut() {
                     let msg = update_messages(session, &parse_pattern).await;
                     if let Some(v) = msg {
@@ -91,15 +92,14 @@ pub async fn run() {
                     }
                 }
                 let collected = &response.join("\n");
-                if collected.is_empty() {
-                    continue;
-                }
                 let msg = format!("MSG {}", &collected);
-                replace_formatting(&msg);
-                Session::send_chat_to_clients(&SESSIONS, &msg).await;
-                let lock = clients.clone();
-                for (_, client) in lock.lock().await.iter() {
-                    client.send(&msg[..msg.len() - 1]).await;
+                let msg = replace_formatting(&msg);
+                if msg.trim().len() > 4 {
+                    Session::send_chat_to_clients(&locked, &msg).await;
+                    let ws_clients = clients.lock().await;
+                    for client in (*ws_clients).values() {
+                        client.send(&*msg).await;
+                    }
                 }
             }
         });

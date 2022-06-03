@@ -11,7 +11,7 @@ use serde_json::json;
 use std::env;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::Mutex;
+use tokio::{sync::Mutex, fs::remove_file};
 use tokio::{process::Command, sync::mpsc};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
@@ -19,6 +19,7 @@ use warp::{
     ws::{Message, WebSocket},
     Reply,
 };
+use std::path::PathBuf;
 
 lazy_static::lazy_static! {
     static ref CONFIG_PATH: String = {
@@ -57,13 +58,13 @@ pub(crate) async fn client_connection(ws: WebSocket, clients: Clients) {
                 break;
             }
         };
-        client_msg(&uuid, msg, clients.clone()).await;
+        client_msg(&uuid, msg, &clients).await;
     }
     clients.lock().await.remove(&uuid);
     info!(format!("*info: {} disconnected", uuid));
 }
 
-async fn client_msg(client_id: &str, msg: Message, clients: Clients) {
+async fn client_msg(client_id: &str, msg: Message, clients: &Clients) {
     let msg = match msg.to_str() {
         Ok(v) => v,
         Err(_) => return,
@@ -121,9 +122,21 @@ async fn handle_response(message: &str) -> Option<String> {
                 Some(v) => v,
                 None => return None,
             };
+            let bridges = BRIDGES.lock().await;
             // TODO
             // replace with tmux json + cleanse input
-            Session::send_chat_to_clients(&SESSIONS, in_game_message).await;
+            Session::send_chat_to_clients(&bridges, in_game_message).await;
+            None
+        }
+        "URL" => {
+            let (_, in_game_message) = match get_cmd(message) {
+                Some(v) => v,
+                None => return None,
+            };
+            let bridges = BRIDGES.lock().await;
+            // TODO
+            // replace with tmux json + cleanse input
+            Session::send_url_to_clients(&bridges, in_game_message).await;
             None
         }
         "LIST" => {
@@ -204,6 +217,20 @@ async fn handle_response(message: &str) -> Option<String> {
             }
             Some(format!("LIST_BRIDGES {}", response.join("\n")))
         }
+        "RM_BACKUP" => {
+            let (_, args) = match get_cmd(message) {
+                Some(v) => v,
+                None => return None,
+            };
+            let args: Vec<&str> = args.split_whitespace().collect();
+            if args.len() != 1 {
+                return Some("RM_BACKUP Invalid Arguments".to_owned());
+            }
+            Some(match remove_file(PathBuf::from(&CONFIG.backup_location).join(args[0])).await {
+                Ok(_) => "RM_BACKUP removed backup successfully".to_owned(),
+                Err(_) => "RM_BACKUP unable to remove backup".to_owned(),
+            })
+        }
         "TOGGLE_BRIDGE" => {
             let (_, args) = match get_cmd(message) {
                 Some(v) => v,
@@ -215,7 +242,7 @@ async fn handle_response(message: &str) -> Option<String> {
             }
             let mut locked = BRIDGES.lock().await;
             let mut changed = false;
-            for bridge in &mut *locked {
+            for bridge in locked.iter_mut() {
                 if bridge.name == args[0] {
                     if let Some(v) = bridge.enabled {
                         bridge.enabled = Some(!v);
@@ -304,7 +331,7 @@ async fn handle_response(message: &str) -> Option<String> {
             }
             Some(format!("LIST_STRUCTURES {response}"))
         }
-        "LIST_BACKUPS" => Some(list_backups()),
+        "LIST_BACKUPS" => Some(format!("LIST_BACKUPS {}", list_backups())),
         "RESTART" => {
             let script_path = match RESTART_SCRIPT.to_owned() {
                 Some(v) => v,
@@ -321,7 +348,7 @@ async fn handle_response(message: &str) -> Option<String> {
             }
             Some("RESTART failed to execute restart script".to_string())
         }
-        "LIST_SESSIONS" => Some(json!(*SESSIONS.clone()).to_string()),
+        "LIST_SESSIONS" => Some(format!("LIST_SESSIONS {}", json!(*SESSIONS.clone()))),
         "SHELL" => {
             let instructions: Vec<&str> =
                 message[command_index.unwrap() + 1..].split(' ').collect();
