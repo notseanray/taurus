@@ -1,3 +1,5 @@
+use serde::{Serialize, Serializer};
+use serde_derive::Serialize;
 use std::fmt;
 use std::{collections::HashMap, sync::Arc};
 use sysinfo::{DiskExt, System, SystemExt};
@@ -57,6 +59,28 @@ pub(crate) struct Sys {
     ram: (u64, u64),
     uptime: u64,
     sys: System,
+}
+
+#[derive(Serialize)]
+pub(crate) struct SysDisplay {
+    disk: Option<u8>,
+    disk_info: Vec<(u64, u64, f32)>,
+    cpu_avg: (f32, f32),
+    ram: (u64, u64),
+    uptime: u64,
+}
+
+#[allow(clippy::from_over_into)]
+impl Into<SysDisplay> for Sys {
+    fn into(self) -> SysDisplay {
+        SysDisplay {
+            disk: self.disk,
+            disk_info: self.disk_info,
+            cpu_avg: self.cpu_avg,
+            ram: self.ram,
+            uptime: self.uptime,
+        }
+    }
 }
 
 impl Sys {

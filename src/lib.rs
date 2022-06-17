@@ -122,7 +122,9 @@ pub async fn run() {
                         continue;
                     }
                     if clock % game.backup_interval.unwrap() == 0 {
-                        let _ = game.backup(&sys, &i.name, &CONFIG.backup_location).await;
+                        let _ = game
+                            .backup(&sys, i.name.clone(), CONFIG.backup_location.clone())
+                            .await;
                         if let Some(v) = game.backup_keep {
                             delete_backups_older_than(&i.name, v).await;
                         }
@@ -133,7 +135,10 @@ pub async fn run() {
         });
     }
 
-    info!(format!("manager loaded in: {} ms, ", startup.elapsed().as_millis()));
+    info!(format!(
+        "manager loaded in: {} ms, ",
+        startup.elapsed().as_millis()
+    ));
 
     info!(format!(
         "starting websocket server on {}:{}",

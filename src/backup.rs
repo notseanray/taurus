@@ -4,9 +4,12 @@ use serde_derive::{Deserialize, Serialize};
 use std::{
     fs,
     path::PathBuf,
-    time::{Duration, Instant, SystemTime}, 
+    time::{Duration, Instant, SystemTime},
 };
-use tokio::{fs::{remove_file, create_dir_all}, process::Command};
+use tokio::{
+    fs::{create_dir_all, remove_file},
+    process::Command,
+};
 
 // options for a session running a server that contains a chat bridge
 #[derive(Serialize, Deserialize, Clone)]
@@ -122,7 +125,7 @@ impl Game {
         "no configured file path".to_string()
     }
 
-    pub(crate) async fn backup(&self, sys: &Sys, name: &str, backup_location: &str) -> String {
+    pub(crate) async fn backup(&self, sys: &Sys, name: String, backup_location: String) -> String {
         if self.file_path.is_none() {
             return "Unable to reach file path".to_owned();
         }
@@ -132,37 +135,39 @@ impl Game {
         let cwd = PathBuf::from(self.file_path.clone().unwrap());
         if !cwd.as_path().exists() {
             match create_dir_all(&cwd).await {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(_) => return "Backup location does not exists".to_owned(),
             };
         }
-        let world_name = &cwd.iter().next_back().unwrap_or_default().to_string_lossy();
-        let now: DateTime<Local> = Local::now();
-        let backup_name = &format!(
-            "{name}_{:0>4}-{:0>2}-{:0>2}_{:0>2}_{:0>2}_{:0>2}.tar.gz",
-            now.year(),
-            now.month(),
-            now.day(),
-            now.hour(),
-            now.minute(),
-            now.second()
-        );
-        let start = Instant::now();
-        let _ = Command::new("cp")
-            .args(["-ur", &cwd.to_string_lossy(), &format!("{backup_location}/")])
-            .kill_on_drop(true)
-            .status()
-            .await;
-        let _ = Command::new("tar")
-            .current_dir(backup_location)
-            .args(["-czf", backup_name, world_name])
-            .kill_on_drop(true)
-            .status()
-            .await;
-        format!(
-            "finished in {:.2} seconds",
-            start.elapsed().as_millis() as f32 / 1000.0
-        )
+        tokio::spawn(async move {
+            let world_name = &cwd.iter().next_back().unwrap_or_default().to_string_lossy();
+            let now: DateTime<Local> = Local::now();
+            let backup_name = &format!(
+                "{name}_{:0>4}-{:0>2}-{:0>2}_{:0>2}_{:0>2}_{:0>2}.tar.gz",
+                now.year(),
+                now.month(),
+                now.day(),
+                now.hour(),
+                now.minute(),
+                now.second()
+            );
+            let _ = Command::new("cp")
+                .args([
+                    "-ur",
+                    &cwd.to_string_lossy(),
+                    &format!("{}/", backup_location),
+                ])
+                .kill_on_drop(true)
+                .status()
+                .await;
+            let _ = Command::new("tar")
+                .current_dir(backup_location)
+                .args(["-czf", backup_name, world_name])
+                .kill_on_drop(true)
+                .status()
+                .await;
+        });
+        "starting new backup".to_string()
     }
 }
 

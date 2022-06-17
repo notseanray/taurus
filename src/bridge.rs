@@ -1,12 +1,11 @@
-use crate::{
-    backup::Game,
-    config::Rcon,
-    ws::SESSIONS,
-};
+use crate::{backup::Game, config::Rcon, ws::SESSIONS};
 use regex::Regex;
 use serde_derive::{Deserialize, Serialize};
-use std::{fs::{self, File}, path::PathBuf};
 use std::io::{BufRead, BufReader};
+use std::{
+    fs::{self, File},
+    path::PathBuf,
+};
 use tokio::process::Command;
 
 #[derive(Serialize)]
@@ -142,6 +141,22 @@ pub(crate) struct Session {
     pub rcon: Option<Rcon>,
 }
 
+macro_rules! send {
+    ($bridges:expr, $message:expr, $type:expr) => {
+        for client in &*SESSIONS {
+            if let Some(v) = &client.game {
+                for bridge in $bridges {
+                    if bridge.name == client.name && v.chat_bridge == Some(true) && bridge.state {
+                        client
+                            .send_chat(client.rcon.as_ref(), $message, $type)
+                            .await;
+                    }
+                }
+            }
+        }
+    };
+}
+
 impl Session {
     // send messages to all servers with a 'game' session
     pub(crate) async fn send_chat(&self, rcon: Option<&Rcon>, message: &str, url: bool) {
@@ -157,7 +172,13 @@ impl Session {
                 continue;
             }
             let message = if url {
-                format!("tellraw @a {{ \"text\": \"attachment\", \"clickEvent\":{{ \"action\": \"open_url\", \"value\": \"{msg}\"}} }}")
+                let link = msg.split_whitespace().collect::<Vec<&str>>();
+                let text = if link.len() == 1 {
+                    "attachment"
+                } else {
+                    &msg[link[0].len()..]
+                };
+                format!("tellraw @a {{ \"text\": \"{text}\", \"clickEvent\":{{ \"action\": \"open_url\", \"value\": \"{}\"}} }}", link[0])
             } else {
                 format!("tellraw @a {{ \"text\": \"{msg}\" }}")
             };
@@ -165,35 +186,16 @@ impl Session {
                 let _ = v.rcon_send(&message).await;
                 continue;
             }
-            Self::send_command(
-                &self.name,
-                &message,
-            );
+            Self::send_command(&self.name, &message);
         }
     }
 
     pub(crate) async fn send_chat_to_clients(bridges: &Vec<Bridge>, message: &str) {
-        for client in &*SESSIONS {
-            if let Some(v) = &client.game {
-                for bridge in bridges {
-                    if bridge.name == client.name && v.chat_bridge == Some(true) && bridge.state {
-                        client.send_chat(client.rcon.as_ref(), message, false).await;
-                    }
-                }
-            } 
-        }
+        send!(bridges, message, false);
     }
 
     pub(crate) async fn send_url_to_clients(bridges: &Vec<Bridge>, message: &str) {
-        for client in &*SESSIONS {
-            if let Some(v) = &client.game {
-                for bridge in bridges {
-                    if bridge.name == client.name && v.chat_bridge == Some(true) && bridge.state {
-                        client.send_chat(client.rcon.as_ref(), message, true).await;
-                    }
-                }
-            } 
-        }
+        send!(bridges, message, true);
     }
 
     // remove formatting when sending messages to the tmux session

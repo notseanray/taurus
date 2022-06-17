@@ -1,10 +1,10 @@
 use crate::ws::SESSIONS;
 use crate::{bridge::Session, error, exit};
+use rcon_rs::Client;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::from_str;
 use std::path::PathBuf;
 use std::{fs, fs::File};
-use rcon_rs::Client;
 use tokio::process::Command;
 
 // main config
@@ -44,7 +44,7 @@ impl Script {
                     if let Some(r) = &session.rcon {
                         let _ = r.rcon_send(rc).await;
                     }
-                } 
+                }
             }
         }
         if let Some(v) = &self.shell_cmd {
@@ -66,20 +66,17 @@ pub(crate) struct Rcon {
 
 impl Rcon {
     pub(crate) async fn rcon_send(&self, msg: &str) -> Result<(), std::io::Error> {
-        let mut conn = Client::new(
-            &self.ip.clone().unwrap_or_else(|| "localhost".to_string()), 
-            &self.port.to_string()
-        )?;
+        let mut conn = self.connect().await?;
         if conn.auth(&self.password).is_ok() {
             let _ = conn.send(msg, None);
         };
         Ok(())
     }
-    pub(crate) async fn rcon_send_with_response(&self, msg: &str) -> Result<Option<String>, std::io::Error> {
-        let mut conn = Client::new(
-            &self.ip.clone().unwrap_or_else(|| "localhost".to_string()), 
-            &self.port.to_string()
-        )?;
+    pub(crate) async fn rcon_send_with_response(
+        &self,
+        msg: &str,
+    ) -> Result<Option<String>, std::io::Error> {
+        let mut conn = self.connect().await?;
         if conn.auth(&self.password).is_ok() {
             return match conn.send(msg, None) {
                 Ok(v) => Ok(Some(v)),
@@ -87,6 +84,13 @@ impl Rcon {
             };
         };
         Ok(None)
+    }
+
+    async fn connect(&self) -> Result<Client, std::io::Error> {
+        Client::new(
+            &self.ip.clone().unwrap_or_else(|| "localhost".to_string()),
+            &self.port.to_string(),
+        )
     }
 }
 

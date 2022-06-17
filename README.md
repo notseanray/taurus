@@ -37,9 +37,20 @@ Websocket command info:
 |Command | arguments | response | description |
 |--------|-----------|----------|-------------|
 |MSG     | message to send | None | send a chat message to any session labeled "game" |
+|URL     | <URL> [TEXT] | None | sends a clickable url in game chat |
+|LIST    | None | list sessions with online players of each | equal to sending "list" with RCON |
+|BACKUP  | <SESSION_NAME> | result of attempt to start backup | updates/creates(if it doesn't already exists) an incremental copy on disk of the world folder, then creates a gzip archive of the folder with a timestampted name|
+|CP_REGION| <SESSION_NAME> <REGION_X> <REGION_Z> | url to region | copies the specified structure into the webserver directory and returns a url to it, note: only include the region x and z numbers not anything else |
+|LIST_BRIDGES | None | a formatted list of the chat bridges and their states | shows info on each session |
+|RM_BACKUP | <BACKUP_NAME> | result of attempting to delete file | can remove backups from file name |
+|TOGGLE_BRIDGE | <SESSION_NAME> | shows if state was toggled | can toggle the chat bridge of a singular session |
 |CMD     | <SESSION_NAME> command | None | send a command to a certain session, can be shell or in game command |
+|RCON    | <SESSION> <COMMAND> | response to the sent command | executes command with rcon |
+|CP_STRUCTURE <SESSION_NAME> <STRUCTURE_NAME> | url to the structure | copies the specified structure into the webserver directory and returns a url to it |
+|LIST_STRUCTURES| <SESSION_NAME> | list structure files in the session | shows all files in the structure folder|
+|LIST_BACKUPS| None | list of backups | list all files ending with .tar.gz in the backup folder |
 |RESTART | None | restarting... or failed to execute restart script| executes restart script|
-|SHELL | <command> | None | execute a shell command |
+|SHELL | <COMMAND> | None | execute a shell command |
 |HEARTBEAT| None | true or false | determines if the system has high ram usage, storage usage, etc. |
 |CHECK| None | string of info about system | shows the ram usage, cpu usage, storage usage of the server etc. |
 |PING| None | PONG timestamp | returns unix timestamp in ms of system time |

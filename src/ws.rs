@@ -3,15 +3,16 @@ use crate::{
     bridge::{Bridge, Session},
     config::Config,
     info,
-    utils::{Clients, Result, Sys, WsClient},
+    utils::{Clients, Result, Sys, SysDisplay, WsClient},
     warn,
 };
 use futures::{FutureExt, StreamExt};
 use serde_json::json;
 use std::env;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::{sync::Mutex, fs::remove_file};
+use tokio::{fs::remove_file, sync::Mutex};
 use tokio::{process::Command, sync::mpsc};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
@@ -19,7 +20,6 @@ use warp::{
     ws::{Message, WebSocket},
     Reply,
 };
-use std::path::PathBuf;
 
 lazy_static::lazy_static! {
     static ref CONFIG_PATH: String = {
@@ -144,7 +144,7 @@ async fn handle_response(message: &str) -> Option<String> {
             for session in &*SESSIONS {
                 if let Some(v) = &session.rcon {
                     lists.push(match v.rcon_send_with_response("list").await {
-                        Ok(Some(v)) => v,
+                        Ok(Some(v)) => format!("{} {v}", session.name),
                         _ => continue,
                     });
                 }
@@ -166,7 +166,9 @@ async fn handle_response(message: &str) -> Option<String> {
                     set = true;
                     let mut sys = Sys::new();
                     sys.refresh();
-                    response = v.backup(&sys, target, &CONFIG.backup_location).await;
+                    response = v
+                        .backup(&sys, target.to_string(), CONFIG.backup_location.clone())
+                        .await;
                 }
             }
             if set {
@@ -184,7 +186,7 @@ async fn handle_response(message: &str) -> Option<String> {
             if args.len() != 4 {
                 return Some("CP_REGION Invalid Arguments".into());
             }
-            let (x, y): (i32, i32) = match (args[2].parse(), args[3].parse()) {
+            let (x, z): (i32, i32) = match (args[2].parse(), args[3].parse()) {
                 (Ok(v), Ok(e)) => (v, e),
                 _ => return Some("CP_REGION Invalid Region Identifier".into()),
             };
@@ -199,7 +201,7 @@ async fn handle_response(message: &str) -> Option<String> {
                     continue;
                 }
                 if let Some(v) = &session.game {
-                    response = v.copy_region(dim, x, y);
+                    response = v.copy_region(dim, x, z);
                 }
             }
             Some(format!("CP_REGION {response}"))
@@ -211,7 +213,7 @@ async fn handle_response(message: &str) -> Option<String> {
                 let state = match bridge.enabled {
                     Some(true) => "true",
                     Some(false) => "false",
-                    _ => "disabled"
+                    _ => "disabled",
                 };
                 response.push(format!("Name: {} State: {state}", bridge.name));
             }
@@ -226,10 +228,12 @@ async fn handle_response(message: &str) -> Option<String> {
             if args.len() != 1 {
                 return Some("RM_BACKUP Invalid Arguments".to_owned());
             }
-            Some(match remove_file(PathBuf::from(&CONFIG.backup_location).join(args[0])).await {
-                Ok(_) => "RM_BACKUP removed backup successfully".to_owned(),
-                Err(_) => "RM_BACKUP unable to remove backup".to_owned(),
-            })
+            Some(
+                match remove_file(PathBuf::from(&CONFIG.backup_location).join(args[0])).await {
+                    Ok(_) => "RM_BACKUP removed backup successfully".to_owned(),
+                    Err(_) => "RM_BACKUP unable to remove backup".to_owned(),
+                },
+            )
         }
         "TOGGLE_BRIDGE" => {
             let (_, args) = match get_cmd(message) {
@@ -250,11 +254,14 @@ async fn handle_response(message: &str) -> Option<String> {
                     }
                 }
             }
-            Some((if changed {
-                "TOGGLE_BRIDGE Toggled state" 
-            } else {
-                "TOGGLE_BRIDGE Session not found"
-            }).to_owned())
+            Some(
+                (if changed {
+                    "TOGGLE_BRIDGE Toggled state"
+                } else {
+                    "TOGGLE_BRIDGE Session not found"
+                })
+                .to_owned(),
+            )
         }
         "CMD" => {
             let command_index = match command_index {
@@ -364,13 +371,15 @@ async fn handle_response(message: &str) -> Option<String> {
             None
         }
         "HEARTBEAT" => Some(format!("HEARTBEAT {}", Sys::new().sys_health_check())),
-        "CHECK" => Some(format!("CHECK {}", Sys::new())),
+        "CHECK" => {
+            let sys: SysDisplay = Sys::new().into();
+            Some(format!("CHECK {}", json!(sys)))
+        }
         "PING" => {
             let time = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_millis();
-            //send_to_clients(clients, &format!("PONG {time}")).await;
             Some(format!("PONG {time}"))
         }
         _ => None,
