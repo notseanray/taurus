@@ -129,7 +129,7 @@ impl Game {
         if self.file_path.is_none() {
             return "Unable to reach file path".to_owned();
         }
-        if !sys.sys_health_check() {
+        if sys.sys_health_check() {
             return "Backup aborted due to system constraints".to_owned();
         }
         let cwd = PathBuf::from(self.file_path.clone().unwrap());
@@ -194,7 +194,7 @@ pub(crate) async fn delete_backups_older_than(name: &str, time: u64) {
                 Ok(v) => v,
                 Err(_) => continue,
             };
-            if elapsed > Duration::from_secs(time) {
+            if elapsed.as_secs() > time {
                 let _ = remove_file(PathBuf::from(&CONFIG.backup_location).join(fname)).await;
             }
         }

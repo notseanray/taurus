@@ -109,7 +109,7 @@ impl Sys {
     pub(crate) fn sys_health_check(&self) -> bool {
         let ram = self.ram;
         if ram.0 as f64 / ram.1 as f64 > 0.85
-            || self.cpu_avg.1 > 0.7
+            || self.cpu_avg.1 > 0.8
             || Self::check_disk(&self.sys).is_some()
         {
             return true;
@@ -143,7 +143,7 @@ impl Sys {
             if disk.total_space() < 10737418240 {
                 continue;
             }
-            if disk.available_space() as f32 / disk.total_space() as f32 > 0.1 {
+            if disk.available_space() as f32 / disk.total_space() as f32 > 0.85 {
                 return Some(i as u8);
             }
         }
