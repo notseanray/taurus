@@ -2,11 +2,10 @@ use crate::{
     backup::list_backups,
     bridge::{Bridge, Session},
     config::Config,
-    info,
     utils::{Clients, Result, Sys, SysDisplay, WsClient},
-    warn,
 };
 use futures::{FutureExt, StreamExt};
+use log::{info, warn};
 use serde_json::json;
 use std::env;
 use std::path::PathBuf;
@@ -41,7 +40,7 @@ pub(crate) async fn client_connection(ws: WebSocket, clients: Clients) {
     let client_rcv = UnboundedReceiverStream::new(client_rcv);
     tokio::task::spawn(client_rcv.forward(client_ws_sender).map(|result| {
         if let Err(e) = result {
-            warn!(format!("error sending websocket msg: {e}"));
+            warn!("error sending websocket msg: {e}");
         }
     }));
     let uuid = Uuid::new_v4().to_simple().to_string();
@@ -54,14 +53,14 @@ pub(crate) async fn client_connection(ws: WebSocket, clients: Clients) {
         let msg = match result {
             Ok(msg) => msg,
             Err(e) => {
-                warn!(format!("error receiving message for id {uuid}): {e}"));
+                warn!("error receiving message for id {uuid}): {e}");
                 break;
             }
         };
         client_msg(&uuid, msg, &clients).await;
     }
     clients.lock().await.remove(&uuid);
-    info!(format!("*info: {} disconnected", uuid));
+    info!("{} disconnected", uuid);
 }
 
 async fn client_msg(client_id: &str, msg: Message, clients: &Clients) {
@@ -365,7 +364,7 @@ async fn handle_response(message: &str) -> Option<String> {
                 _ => None,
             };
 
-            info!(format!("shell cmd {command}"));
+            info!("shell cmd {command}");
             let args = args.unwrap_or(&[]);
             let _ = Command::new(command).args(args).kill_on_drop(true).spawn();
             None

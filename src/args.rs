@@ -1,4 +1,5 @@
-use crate::{error, exit, info, warn, ws::PATH, Config, Session};
+use crate::{exit, ws::PATH, Config, Session};
+use log::{error, info, warn};
 use std::fs::{read_dir, remove_file};
 
 pub(crate) fn parse_args(args: Vec<String>) {
@@ -57,29 +58,28 @@ example usage:
                                 let i = match i {
                                     Ok(v) => v,
                                     Err(e) => {
-                                        error!(e);
                                         error!("failed to remove file");
                                         exit!();
                                     }
                                 };
                                 match remove_file(i.path()) {
                                     Ok(_) => {
-                                        info!(format!("successfully removed {:#?}", i.file_name()));
+                                        info!("successfully removed {:#?}", i.file_name());
                                         files += 1;
                                     }
                                     Err(e) => {
-                                        error!(format!("failed to remove file due to: {e}"));
+                                        error!("failed to remove file due to: {e}");
                                     }
                                 };
                             }
-                            info!(format!("*info: removed {files} files, exiting now"));
+                            info!("*info: removed {files} files, exiting now");
                             exit!();
                         }
 
                         match remove_file(config.backup_location + &args[e + 2]) {
                             Ok(_) => {}
                             Err(e) => {
-                                error!(format!("failed to remove file due to: {e}"));
+                                error!("failed to remove file due to: {e}");
                                 exit!();
                             }
                         };
@@ -89,7 +89,7 @@ example usage:
                 exit!();
             }
             _ => {
-                warn!(format!("invalid argument -> {}", arg));
+                warn!("invalid argument -> {}", arg);
                 warn!("skipping argument");
                 continue;
             }

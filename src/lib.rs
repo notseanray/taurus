@@ -12,6 +12,7 @@ use crate::{
 };
 use bridge::{gen_pipe, replace_formatting, set_lines, update_messages};
 use config::Config;
+use log::{error, info};
 use regex::Regex;
 use std::{
     collections::HashMap,
@@ -135,15 +136,12 @@ pub async fn run() {
         });
     }
 
-    info!(format!(
-        "manager loaded in: {} ms, ",
-        startup.elapsed().as_millis()
-    ));
+    info!("manager loaded in: {} ms, ", startup.elapsed().as_millis());
 
-    info!(format!(
+    info!(
         "starting websocket server on {}:{}",
         CONFIG.ws_ip, CONFIG.ws_port
-    ));
+    );
     warp::serve(routes).run((ip, CONFIG.ws_port as u16)).await;
 }
 fn with_clients(clients: Clients) -> impl Filter<Extract = (Clients,), Error = Infallible> + Clone {

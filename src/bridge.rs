@@ -45,6 +45,9 @@ pub(crate) async fn update_messages(server: &mut Bridge, pattern: &Regex) -> Opt
             Ok(v) => v,
             Err(_) => continue,
         };
+        if line.len() < 3 {
+            continue;
+        }
         let mut message_out = String::with_capacity(line.len());
         let message_chars = line.chars().collect::<Vec<char>>();
         message_chars.iter().for_each(|c| message_out.push(*c));

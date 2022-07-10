@@ -1,5 +1,6 @@
 use crate::ws::SESSIONS;
-use crate::{bridge::Session, error, exit};
+use crate::{bridge::Session, exit};
+use log::error;
 use rcon_rs::Client;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::from_str;
@@ -109,8 +110,7 @@ impl Config {
         let data = match fs::read_to_string(path.to_owned() + "/config.json") {
             Ok(t) => t,
             Err(e) => {
-                error!(format!("no config file found at {}!", path));
-                error!(e);
+                error!("no config file found at {}!", path);
                 eprintln!("*info: generating default config");
                 Config::default_root_cfg(path.to_owned());
                 if !PathBuf::from(config_path).exists() {
@@ -124,7 +124,6 @@ impl Config {
         let conf: Self = match from_str(&data) {
             Ok(t) => t,
             Err(e) => {
-                error!(e);
                 error!("invalid config file! exiting");
                 exit!();
             }
@@ -181,7 +180,7 @@ impl Config {
             match from_str(&data) {
                 Ok(t) => sessions.push(t),
                 Err(e) => {
-                    error!(e);
+                    error!("{:?}", e);
                     error!("invalid server config! exiting");
                     exit!();
                 }

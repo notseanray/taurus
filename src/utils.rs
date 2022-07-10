@@ -18,27 +18,6 @@ macro_rules! exit {
     };
 }
 
-#[macro_export]
-macro_rules! info {
-    ($val:expr) => {
-        println!("*info: \x1b[32m{}\x1b[0m", $val);
-    };
-}
-
-#[macro_export]
-macro_rules! warn {
-    ($val:expr) => {
-        println!("*warn: \x1b[33m{}\x1b[0m", $val);
-    };
-}
-
-#[macro_export]
-macro_rules! error {
-    ($val:expr) => {
-        println!("*error: \x1b[31m{}\x1b[0m", $val);
-    };
-}
-
 pub(crate) struct WsClient {
     pub sender: Option<mpsc::UnboundedSender<std::result::Result<Message, warp::Error>>>,
     pub authed: bool,
