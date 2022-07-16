@@ -1,12 +1,14 @@
 const WebSocket = require('ws')
-const url = 'ws://192.168.1.120:11800/taurus'
+const url = 'ws://192.168.1.95:12023/taurus'
 const connection = new WebSocket(url)
 
 console.log("sending", "ping")
 
 connection.onopen = () => {
 	console.log("s")
-	connection.send("PING")
+	connection.send("hypnosbestnos-quacon-is-good-too")
+	connection.send("BACKUP SMP")
+	connection.send("CHECK")
 	//connection.send("TOGGLE_BRIDGE SAGCMP")
 }
 

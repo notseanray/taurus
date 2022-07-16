@@ -73,8 +73,10 @@ pub(crate) async fn update_messages(server: &mut Bridge, pattern: &Regex) -> Opt
                     continue;
                 }
             }
-            if list_message[2] == "has" && list_message.len() > 6 && !list_message[0].contains('<')
-            {
+            if list_message.len() < 3 {
+                continue;
+            }
+            if list_message[2] == "has" && list_message.len() > 6 && !list_message[0].contains('<') {
                 message.push_str(&message_out[33..]);
             }
         }
