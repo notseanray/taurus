@@ -11,6 +11,7 @@ use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::RwLock;
 use tokio::{fs::remove_file, sync::Mutex};
 use tokio::{process::Command, sync::mpsc};
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -27,10 +28,18 @@ lazy_static::lazy_static! {
     };
     pub(crate) static ref ARGS: Vec<String> = env::args().collect();
     pub(crate) static ref PATH: String = ARGS[0].to_owned()[..ARGS[0].len() - 6].to_string();
-    pub(crate) static ref SESSIONS: Vec<Session> = Config::load_sessions(PATH.to_owned());
-    pub(crate) static ref CONFIG: Config = Config::load_config(PATH.to_owned());
+    pub(crate) static ref SESSIONS: Arc<RwLock<Vec<Session>>> = Arc::new(RwLock::new(Config::load_sessions(PATH.to_owned())));
+    pub(crate) static ref CONFIG: Arc<RwLock<Config>> = Arc::new(RwLock::new(Config::load_config(PATH.to_owned())));
     pub(crate) static ref BRIDGES: Arc<Mutex<Vec<Bridge>>> = Arc::new(Mutex::new(Vec::new()));
-    static ref RESTART_SCRIPT: Option<String> = Config::load_config(CONFIG_PATH.to_string()).restart_script;
+    static ref RESTART_SCRIPT: Option<String> = None;
+    // Config::load_config(CONFIG_PATH.to_string()).restart_script;
+}
+
+#[macro_export]
+macro_rules! read {
+    ($var:expr) => {
+        $var.read()
+    };
 }
 
 pub(crate) async fn client_connection(ws: WebSocket, clients: Clients) {
@@ -72,9 +81,9 @@ async fn client_msg(client_id: &str, msg: Message, clients: &Clients) {
     if let Some(mut v) = locked.get_mut(client_id) {
         if !v.authed {
             v.authed = {
-                if CONFIG.ws_password.len() == msg.len() {
+                if read!(CONFIG).await.ws_password.len() == msg.len() {
                     let mut result = 0;
-                    for (x, y) in CONFIG.ws_password.chars().zip(msg.chars()) {
+                    for (x, y) in read!(CONFIG).await.ws_password.chars().zip(msg.chars()) {
                         result |= x as u32 ^ y as u32;
                     }
                     result == 0
@@ -140,7 +149,7 @@ async fn handle_response(message: &str) -> Option<String> {
         }
         "LIST" => {
             let mut lists = Vec::new();
-            for session in &*SESSIONS {
+            for session in &*read!(SESSIONS).await {
                 if let Some(v) = &session.rcon {
                     lists.push(match v.rcon_send_with_response("list").await {
                         Ok(Some(v)) => format!("{} {v}", session.name),
@@ -157,7 +166,7 @@ async fn handle_response(message: &str) -> Option<String> {
             };
             let mut set = false;
             let mut response = String::new();
-            for session in &*SESSIONS {
+            for session in &*read!(SESSIONS).await.clone() {
                 if session.name != target {
                     continue;
                 }
@@ -166,7 +175,11 @@ async fn handle_response(message: &str) -> Option<String> {
                     let mut sys = Sys::new();
                     sys.refresh();
                     response = v
-                        .backup(&sys, target.to_string(), CONFIG.backup_location.clone())
+                        .backup(
+                            &sys,
+                            target.to_string(),
+                            read!(CONFIG).await.backup_location.clone().to_string(),
+                        )
                         .await;
                 }
             }
@@ -195,12 +208,12 @@ async fn handle_response(message: &str) -> Option<String> {
                 _ => return Some("CP_REGION Invalid Dimension Provided".into()),
             };
             let mut response = String::new();
-            for session in &*SESSIONS {
+            for session in &*read!(SESSIONS).await {
                 if session.name != args[0] {
                     continue;
                 }
                 if let Some(v) = &session.game {
-                    response = v.copy_region(dim, x, z);
+                    response = v.copy_region(dim, x, z).await;
                 }
             }
             Some(format!("CP_REGION {response}"))
@@ -228,7 +241,11 @@ async fn handle_response(message: &str) -> Option<String> {
                 return Some("RM_BACKUP Invalid Arguments".to_owned());
             }
             Some(
-                match remove_file(PathBuf::from(&CONFIG.backup_location).join(args[0])).await {
+                match remove_file(
+                    PathBuf::from(&*read!(CONFIG).await.backup_location).join(args[0]),
+                )
+                .await
+                {
                     Ok(_) => "RM_BACKUP removed backup successfully".to_owned(),
                     Err(_) => "RM_BACKUP unable to remove backup".to_owned(),
                 },
@@ -284,7 +301,7 @@ async fn handle_response(message: &str) -> Option<String> {
                 None => return None,
             };
             let mut response = String::new();
-            for session in &*SESSIONS {
+            for session in &*read!(SESSIONS).await {
                 if session.name != target {
                     continue;
                 }
@@ -307,12 +324,12 @@ async fn handle_response(message: &str) -> Option<String> {
                 return Some("CP_STRUCTURE Invalid Arguments".into());
             }
             let mut response = String::new();
-            for session in &*SESSIONS {
+            for session in &*read!(SESSIONS).await {
                 if session.name != args[0] {
                     continue;
                 }
                 if let Some(v) = &session.game {
-                    response = v.copy_structure(args[1]);
+                    response = v.copy_structure(args[1]).await;
                 }
             }
             Some(format!("CP_STRUCTURE {response}"))
@@ -327,7 +344,7 @@ async fn handle_response(message: &str) -> Option<String> {
                 return Some("LIST_STRUCTURES Invalid Arguments".into());
             }
             let mut response = String::new();
-            for session in &*SESSIONS {
+            for session in &*read!(SESSIONS).await {
                 if session.name != args[0] {
                     continue;
                 }
@@ -337,7 +354,10 @@ async fn handle_response(message: &str) -> Option<String> {
             }
             Some(format!("LIST_STRUCTURES {response}"))
         }
-        "LIST_BACKUPS" => Some(format!("LIST_BACKUPS {}", list_backups())),
+        "LIST_BACKUPS" => Some(format!(
+            "LIST_BACKUPS {}",
+            list_backups(&*read!(SESSIONS).await).await
+        )),
         "RESTART" => {
             let script_path = match RESTART_SCRIPT.to_owned() {
                 Some(v) => v,
@@ -354,7 +374,10 @@ async fn handle_response(message: &str) -> Option<String> {
             }
             Some("RESTART failed to execute restart script".to_string())
         }
-        "LIST_SESSIONS" => Some(format!("LIST_SESSIONS {}", json!(*SESSIONS.clone()))),
+        "LIST_SESSIONS" => Some(format!(
+            "LIST_SESSIONS {}",
+            json!(*read!(SESSIONS).await.clone())
+        )),
         "SHELL" => {
             let instructions: Vec<&str> =
                 message[command_index.unwrap() + 1..].split(' ').collect();

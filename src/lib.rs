@@ -9,10 +9,12 @@ use crate::{
     backup::delete_backups_older_than,
     bridge::{Bridge, Session},
     utils::Sys,
+    ws::PATH,
 };
 use bridge::{gen_pipe, replace_formatting, set_lines, update_messages};
 use config::Config;
 use log::{error, info};
+use notify::{watcher, RecursiveMode, Watcher};
 use regex::Regex;
 use std::{
     collections::HashMap,
@@ -40,7 +42,7 @@ pub async fn run() {
     let routes = ws_route.with(warp::cors().allow_any_origin());
 
     let mut ip = [0; 4];
-    for (i, e) in CONFIG.ws_ip.to_owned().split('.').enumerate() {
+    for (i, e) in read!(CONFIG).await.ws_ip.to_owned().split('.').enumerate() {
         if let Ok(v) = e.parse::<u8>() {
             ip[i] = v;
         } else {
@@ -49,7 +51,7 @@ pub async fn run() {
         }
     }
 
-    for session in &SESSIONS.to_vec() {
+    for session in &read!(SESSIONS).await.to_vec() {
         let name = &session.name;
         if session.game.is_none() {
             println!(
@@ -78,7 +80,7 @@ pub async fn run() {
         });
     }
 
-    if SESSIONS.len() > 0 {
+    if read!(SESSIONS).await.len() > 0 {
         tokio::spawn(async move {
             let parse_pattern = Regex::new(r"^\[\d{2}:\d{2}:\d{2}\] \[Server thread/INFO\]: (<.*|[\w §]+ (joined|left) the game)$").unwrap();
             let bridges = BRIDGES.clone();
@@ -104,6 +106,19 @@ pub async fn run() {
                 }
             }
         });
+
+        tokio::spawn(async move {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let mut watcher = watcher(tx, Duration::from_secs(5)).unwrap();
+            watcher.watch(&*PATH, RecursiveMode::Recursive).unwrap();
+            loop {
+                // Send cannot be sent unless the event is dropped, so we must wait until an event
+                // happens then reload the config and continue
+                while let Ok(notify::DebouncedEvent::Write(_)) = rx.recv() {}
+                *SESSIONS.write().await = Config::load_sessions(PATH.to_owned());
+            }
+        });
+
         let mut clock: u64 = 0;
         let mut sys = Sys::new();
         sys.refresh();
@@ -114,7 +129,7 @@ pub async fn run() {
                 // though this will probably literally never be needed, we can loop forever
                 // max backup interval is u64::MAX
                 clock = clock.wrapping_add(1);
-                for i in &*SESSIONS {
+                for i in &*read!(SESSIONS).await {
                     let game = match &i.game {
                         Some(v) => v,
                         None => continue,
@@ -124,10 +139,20 @@ pub async fn run() {
                     }
                     if clock % game.backup_interval.unwrap() == 0 {
                         let _ = game
-                            .backup(&sys, i.name.clone(), CONFIG.backup_location.clone())
+                            .backup(
+                                &sys,
+                                i.name.clone(),
+                                read!(CONFIG).await.backup_location.clone(),
+                            )
                             .await;
                         if let Some(v) = game.backup_keep {
-                            delete_backups_older_than(&i.name, v).await;
+                            delete_backups_older_than(
+                                &i.name,
+                                v,
+                                &(&game.backup_path.as_ref())
+                                    .unwrap_or(&read!(CONFIG).await.backup_location),
+                            )
+                            .await;
                         }
                     }
                 }
@@ -138,11 +163,13 @@ pub async fn run() {
 
     info!("manager loaded in: {} ms, ", startup.elapsed().as_millis());
 
+    let port = read!(CONFIG).await.ws_port;
+
     info!(
-        "starting websocket server on {}:{}",
-        CONFIG.ws_ip, CONFIG.ws_port
+        "starting websocket server on {}:{port}",
+        read!(CONFIG).await.ws_ip
     );
-    warp::serve(routes).run((ip, CONFIG.ws_port as u16)).await;
+    warp::serve(routes).run((ip, port as u16)).await;
 }
 fn with_clients(clients: Clients) -> impl Filter<Extract = (Clients,), Error = Infallible> + Clone {
     warp::any().map(move || clients.clone())

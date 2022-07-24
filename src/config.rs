@@ -1,6 +1,8 @@
+use crate::read;
 use crate::ws::SESSIONS;
 use crate::{bridge::Session, exit};
 use log::error;
+use log::info;
 use rcon_rs::Client;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::from_str;
@@ -38,7 +40,7 @@ impl Script {
     pub(crate) async fn run(&self) {
         if let Some(rc) = &self.rcon_cmd {
             if let Some(sn) = &self.session_name {
-                for session in &*SESSIONS {
+                for session in &*read!(SESSIONS).await {
                     if &session.name != sn {
                         continue;
                     }
@@ -130,7 +132,7 @@ impl Config {
         };
         if conf.scripts.is_some() {
             for i in conf.scripts.as_ref().unwrap() {
-                println!("*info: found script: {}", i.description);
+                info!("*info: found script: {}", i.description);
             }
         }
         conf
@@ -170,7 +172,7 @@ impl Config {
             .expect("*error: \x1b[31mfailed to read server directory\x1b[0m")
         {
             let i = i.unwrap();
-            println!("*info: reading: {:#?}", i.path().display().to_string());
+            info!("*info: reading: {:#?}", i.path().display().to_string());
 
             let data = match fs::read_to_string(i.path()) {
                 Ok(t) => t,

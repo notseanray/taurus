@@ -9,8 +9,6 @@ use warp::{ws::Message, Rejection};
 pub(crate) type Clients = Arc<Mutex<HashMap<String, WsClient>>>;
 pub(crate) type Result<T> = std::result::Result<T, Rejection>;
 
-// colored println macros, are they useful? No, do I care? also no
-
 #[macro_export]
 macro_rules! exit {
     () => {

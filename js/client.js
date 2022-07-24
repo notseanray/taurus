@@ -7,8 +7,10 @@ console.log("sending", "ping")
 connection.onopen = () => {
 	console.log("s")
 	connection.send("hypnosbestnos-quacon-is-good-too")
-	connection.send("BACKUP SMP")
+	//connection.send("BACKUP SMP")
 	connection.send("CHECK")
+	connection.send("LIST_BACKUPS")
+	connection.send("LIST")
 	//connection.send("TOGGLE_BRIDGE SAGCMP")
 }
 

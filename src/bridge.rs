@@ -1,3 +1,4 @@
+use crate::read;
 use crate::{backup::Game, config::Rcon, ws::SESSIONS};
 use regex::Regex;
 use serde_derive::{Deserialize, Serialize};
@@ -76,7 +77,8 @@ pub(crate) async fn update_messages(server: &mut Bridge, pattern: &Regex) -> Opt
             if list_message.len() < 3 {
                 continue;
             }
-            if list_message[2] == "has" && list_message.len() > 6 && !list_message[0].contains('<') {
+            if list_message[2] == "has" && list_message.len() > 6 && !list_message[0].contains('<')
+            {
                 message.push_str(&message_out[33..]);
             }
         }
@@ -147,15 +149,13 @@ pub(crate) struct Session {
 }
 
 macro_rules! send {
-    ($bridges:expr, $message:expr, $type:expr) => {
-        for client in &*SESSIONS {
-            if let Some(v) = &client.game {
-                for bridge in $bridges {
-                    if bridge.name == client.name && v.chat_bridge == Some(true) && bridge.state {
-                        client
-                            .send_chat(client.rcon.as_ref(), $message, $type)
-                            .await;
-                    }
+    ($client:expr, $bridges:expr, $message:expr, $type:expr) => {
+        if let Some(v) = &$client.game {
+            for bridge in $bridges {
+                if bridge.name == $client.name && v.chat_bridge == Some(true) && bridge.state {
+                    $client
+                        .send_chat($client.rcon.as_ref(), $message, $type)
+                        .await;
                 }
             }
         }
@@ -196,11 +196,15 @@ impl Session {
     }
 
     pub(crate) async fn send_chat_to_clients(bridges: &Vec<Bridge>, message: &str) {
-        send!(bridges, message, false);
+        for client in &*read!(SESSIONS).await {
+            send!(client, bridges, message, false);
+        }
     }
 
     pub(crate) async fn send_url_to_clients(bridges: &Vec<Bridge>, message: &str) {
-        send!(bridges, message, true);
+        for client in &*read!(SESSIONS).await {
+            send!(client, bridges, message, true);
+        }
     }
 
     // remove formatting when sending messages to the tmux session
