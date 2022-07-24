@@ -1,4 +1,3 @@
-use crate::read;
 use crate::{bridge::Session, utils::Sys, ws::CONFIG};
 use chrono::{DateTime, Datelike, Local, Timelike};
 use serde_derive::{Deserialize, Serialize};
@@ -22,12 +21,12 @@ pub(crate) struct Game {
 impl Game {
     pub(crate) async fn copy_region(&self, dim: &str, x: i32, y: i32) -> String {
         if self.file_path.is_none()
-            || read!(CONFIG).await.webserver_location.is_none()
-            || read!(CONFIG).await.webserver_prefix.is_none()
+            || CONFIG.read().await.webserver_location.is_none()
+            || CONFIG.read().await.webserver_prefix.is_none()
         {
             return "webserver not configured".to_owned();
         }
-        if let Some(ws_l) = &read!(CONFIG).await.webserver_location {
+        if let Some(ws_l) = &CONFIG.read().await.webserver_location {
             let webserver_location = PathBuf::from(ws_l).join(PathBuf::from("region"));
             if !webserver_location.exists() && fs::create_dir_all(&webserver_location).is_err() {
                 return "Unable to create region folder".to_owned();
@@ -50,7 +49,7 @@ impl Game {
                 if fs::copy(full_path, webserver_location).is_err() {
                     return "Failed to copy region into webserver folder".to_owned();
                 }
-                if let Some(ws_p) = &read!(CONFIG).await.webserver_prefix {
+                if let Some(ws_p) = &CONFIG.read().await.webserver_prefix {
                     return format!("{}/region/{region_name}", ws_p);
                 }
             }
@@ -60,12 +59,12 @@ impl Game {
 
     pub(crate) async fn copy_structure(&self, name: &str) -> String {
         if self.file_path.is_none()
-            || read!(CONFIG).await.webserver_location.is_none()
-            || read!(CONFIG).await.webserver_prefix.is_none()
+            || CONFIG.read().await.webserver_location.is_none()
+            || CONFIG.read().await.webserver_prefix.is_none()
         {
             return "webserver not configured".to_owned();
         }
-        if let Some(ws_l) = &read!(CONFIG).await.webserver_location {
+        if let Some(ws_l) = &CONFIG.read().await.webserver_location {
             let webserver_location = PathBuf::from(ws_l).join(PathBuf::from("structure"));
             if !webserver_location.exists() && fs::create_dir_all(&webserver_location).is_err() {
                 return "Unable to create region folder".to_owned();
@@ -81,7 +80,7 @@ impl Game {
                     return "Failed to copy structure into webserver folder".to_owned();
                 }
             }
-            if let Some(ws_p) = &read!(CONFIG).await.webserver_prefix {
+            if let Some(ws_p) = &CONFIG.read().await.webserver_prefix {
                 return format!("{}/structure/{name}", ws_p);
             }
         }
@@ -194,7 +193,7 @@ pub(crate) async fn delete_backups_older_than(name: &str, time: u64, backup_loca
             };
             if elapsed.as_secs() > time {
                 let _ =
-                    remove_file(PathBuf::from(&read!(CONFIG).await.backup_location).join(fname))
+                    remove_file(PathBuf::from(&CONFIG.read().await.backup_location).join(fname))
                         .await;
             }
         }
@@ -207,10 +206,10 @@ pub(crate) async fn list_backups(backup_locations: &Vec<Session>) -> String {
         let dir = PathBuf::from(if let Some(v) = &location.game {
             match &v.backup_path {
                 Some(v) => v.to_owned(),
-                None => read!(CONFIG).await.backup_location.to_string(),
+                None => CONFIG.read().await.backup_location.to_string(),
             }
         } else {
-            read!(CONFIG).await.backup_location.to_owned()
+            CONFIG.read().await.backup_location.to_owned()
         });
         if !dir.exists() {
             match fs::create_dir_all(dir) {

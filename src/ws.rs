@@ -35,13 +35,6 @@ lazy_static::lazy_static! {
     // Config::load_config(CONFIG_PATH.to_string()).restart_script;
 }
 
-#[macro_export]
-macro_rules! read {
-    ($var:expr) => {
-        $var.read()
-    };
-}
-
 pub(crate) async fn client_connection(ws: WebSocket, clients: Clients) {
     println!("*info: establishing new client connection...");
     let (client_ws_sender, mut client_ws_rcv) = ws.split();
@@ -81,9 +74,9 @@ async fn client_msg(client_id: &str, msg: Message, clients: &Clients) {
     if let Some(mut v) = locked.get_mut(client_id) {
         if !v.authed {
             v.authed = {
-                if read!(CONFIG).await.ws_password.len() == msg.len() {
+                if CONFIG.read().await.ws_password.len() == msg.len() {
                     let mut result = 0;
-                    for (x, y) in read!(CONFIG).await.ws_password.chars().zip(msg.chars()) {
+                    for (x, y) in CONFIG.read().await.ws_password.chars().zip(msg.chars()) {
                         result |= x as u32 ^ y as u32;
                     }
                     result == 0
@@ -149,7 +142,7 @@ async fn handle_response(message: &str) -> Option<String> {
         }
         "LIST" => {
             let mut lists = Vec::new();
-            for session in &*read!(SESSIONS).await {
+            for session in &*SESSIONS.read().await {
                 if let Some(v) = &session.rcon {
                     lists.push(match v.rcon_send_with_response("list").await {
                         Ok(Some(v)) => format!("{} {v}", session.name),
@@ -166,7 +159,7 @@ async fn handle_response(message: &str) -> Option<String> {
             };
             let mut set = false;
             let mut response = String::new();
-            for session in &*read!(SESSIONS).await.clone() {
+            for session in &*SESSIONS.read().await.clone() {
                 if session.name != target {
                     continue;
                 }
@@ -178,7 +171,7 @@ async fn handle_response(message: &str) -> Option<String> {
                         .backup(
                             &sys,
                             target.to_string(),
-                            read!(CONFIG).await.backup_location.clone().to_string(),
+                            CONFIG.read().await.backup_location.clone().to_string(),
                         )
                         .await;
                 }
@@ -208,7 +201,7 @@ async fn handle_response(message: &str) -> Option<String> {
                 _ => return Some("CP_REGION Invalid Dimension Provided".into()),
             };
             let mut response = String::new();
-            for session in &*read!(SESSIONS).await {
+            for session in &*SESSIONS.read().await {
                 if session.name != args[0] {
                     continue;
                 }
@@ -242,7 +235,7 @@ async fn handle_response(message: &str) -> Option<String> {
             }
             Some(
                 match remove_file(
-                    PathBuf::from(&*read!(CONFIG).await.backup_location).join(args[0]),
+                    PathBuf::from(&*CONFIG.read().await.backup_location).join(args[0]),
                 )
                 .await
                 {
@@ -301,7 +294,7 @@ async fn handle_response(message: &str) -> Option<String> {
                 None => return None,
             };
             let mut response = String::new();
-            for session in &*read!(SESSIONS).await {
+            for session in &*SESSIONS.read().await {
                 if session.name != target {
                     continue;
                 }
@@ -324,7 +317,7 @@ async fn handle_response(message: &str) -> Option<String> {
                 return Some("CP_STRUCTURE Invalid Arguments".into());
             }
             let mut response = String::new();
-            for session in &*read!(SESSIONS).await {
+            for session in &*SESSIONS.read().await {
                 if session.name != args[0] {
                     continue;
                 }
@@ -344,7 +337,7 @@ async fn handle_response(message: &str) -> Option<String> {
                 return Some("LIST_STRUCTURES Invalid Arguments".into());
             }
             let mut response = String::new();
-            for session in &*read!(SESSIONS).await {
+            for session in &*SESSIONS.read().await {
                 if session.name != args[0] {
                     continue;
                 }
@@ -356,7 +349,7 @@ async fn handle_response(message: &str) -> Option<String> {
         }
         "LIST_BACKUPS" => Some(format!(
             "LIST_BACKUPS {}",
-            list_backups(&*read!(SESSIONS).await).await
+            list_backups(&*SESSIONS.read().await).await
         )),
         "RESTART" => {
             let script_path = match RESTART_SCRIPT.to_owned() {
@@ -376,7 +369,7 @@ async fn handle_response(message: &str) -> Option<String> {
         }
         "LIST_SESSIONS" => Some(format!(
             "LIST_SESSIONS {}",
-            json!(*read!(SESSIONS).await.clone())
+            json!(*SESSIONS.read().await.clone())
         )),
         "SHELL" => {
             let instructions: Vec<&str> =

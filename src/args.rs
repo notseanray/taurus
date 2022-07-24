@@ -42,7 +42,7 @@ example usage:
                         let mut backups = "backups: ".to_string();
                         for i in read_dir(config.backup_location).unwrap() {
                             let i = i.unwrap();
-                            backups.push_str(&format!("\t{}", i.file_name().to_string_lossy()));
+                            backups = format!("{backups}\t{}", i.file_name().to_string_lossy());
                         }
                         println!("{backups}");
                     }
@@ -57,7 +57,7 @@ example usage:
                             for i in read_dir(config.backup_location).unwrap() {
                                 let i = match i {
                                     Ok(v) => v,
-                                    Err(e) => {
+                                    Err(_) => {
                                         error!("failed to remove file");
                                         exit!();
                                     }

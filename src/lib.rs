@@ -42,7 +42,7 @@ pub async fn run() {
     let routes = ws_route.with(warp::cors().allow_any_origin());
 
     let mut ip = [0; 4];
-    for (i, e) in read!(CONFIG).await.ws_ip.to_owned().split('.').enumerate() {
+    for (i, e) in CONFIG.read().await.ws_ip.to_owned().split('.').enumerate() {
         if let Ok(v) = e.parse::<u8>() {
             ip[i] = v;
         } else {
@@ -51,7 +51,7 @@ pub async fn run() {
         }
     }
 
-    for session in &read!(SESSIONS).await.to_vec() {
+    for session in &*SESSIONS.read().await {
         let name = &session.name;
         if session.game.is_none() {
             println!(
@@ -80,7 +80,7 @@ pub async fn run() {
         });
     }
 
-    if read!(SESSIONS).await.len() > 0 {
+    if SESSIONS.read().await.len() > 0 {
         tokio::spawn(async move {
             let parse_pattern = Regex::new(r"^\[\d{2}:\d{2}:\d{2}\] \[Server thread/INFO\]: (<.*|[\w §]+ (joined|left) the game)$").unwrap();
             let bridges = BRIDGES.clone();
@@ -116,6 +116,7 @@ pub async fn run() {
                 // happens then reload the config and continue
                 while let Ok(notify::DebouncedEvent::Write(_)) = rx.recv() {}
                 *SESSIONS.write().await = Config::load_sessions(PATH.to_owned());
+                *CONFIG.write().await = Config::load_config(PATH.to_owned());
             }
         });
 
@@ -129,7 +130,7 @@ pub async fn run() {
                 // though this will probably literally never be needed, we can loop forever
                 // max backup interval is u64::MAX
                 clock = clock.wrapping_add(1);
-                for i in &*read!(SESSIONS).await {
+                for i in &*SESSIONS.read().await {
                     let game = match &i.game {
                         Some(v) => v,
                         None => continue,
@@ -142,15 +143,15 @@ pub async fn run() {
                             .backup(
                                 &sys,
                                 i.name.clone(),
-                                read!(CONFIG).await.backup_location.clone(),
+                                CONFIG.read().await.backup_location.clone(),
                             )
                             .await;
                         if let Some(v) = game.backup_keep {
                             delete_backups_older_than(
                                 &i.name,
                                 v,
-                                &(&game.backup_path.as_ref())
-                                    .unwrap_or(&read!(CONFIG).await.backup_location),
+                                (&game.backup_path.as_ref())
+                                    .unwrap_or(&CONFIG.read().await.backup_location),
                             )
                             .await;
                         }
@@ -163,11 +164,11 @@ pub async fn run() {
 
     info!("manager loaded in: {} ms, ", startup.elapsed().as_millis());
 
-    let port = read!(CONFIG).await.ws_port;
+    let port = CONFIG.read().await.ws_port;
 
     info!(
         "starting websocket server on {}:{port}",
-        read!(CONFIG).await.ws_ip
+        CONFIG.read().await.ws_ip
     );
     warp::serve(routes).run((ip, port as u16)).await;
 }

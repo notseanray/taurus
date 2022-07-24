@@ -1,4 +1,3 @@
-use crate::read;
 use crate::ws::SESSIONS;
 use crate::{bridge::Session, exit};
 use log::error;
@@ -40,7 +39,7 @@ impl Script {
     pub(crate) async fn run(&self) {
         if let Some(rc) = &self.rcon_cmd {
             if let Some(sn) = &self.session_name {
-                for session in &*read!(SESSIONS).await {
+                for session in &*SESSIONS.read().await {
                     if &session.name != sn {
                         continue;
                     }

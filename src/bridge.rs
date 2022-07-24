@@ -1,4 +1,3 @@
-use crate::read;
 use crate::{backup::Game, config::Rcon, ws::SESSIONS};
 use regex::Regex;
 use serde_derive::{Deserialize, Serialize};
@@ -196,13 +195,13 @@ impl Session {
     }
 
     pub(crate) async fn send_chat_to_clients(bridges: &Vec<Bridge>, message: &str) {
-        for client in &*read!(SESSIONS).await {
+        for client in &*SESSIONS.read().await {
             send!(client, bridges, message, false);
         }
     }
 
     pub(crate) async fn send_url_to_clients(bridges: &Vec<Bridge>, message: &str) {
-        for client in &*read!(SESSIONS).await {
+        for client in &*SESSIONS.read().await {
             send!(client, bridges, message, true);
         }
     }
