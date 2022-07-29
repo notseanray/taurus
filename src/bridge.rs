@@ -6,6 +6,7 @@ use std::{
     fs::{self, File},
     path::PathBuf,
 };
+use std::fmt::Write;
 use tokio::process::Command;
 
 #[derive(Serialize)]
@@ -15,6 +16,8 @@ pub(crate) struct Bridge {
     pub enabled: Option<bool>,
     pub state: bool,
 }
+
+const MAX_PIPE_LENGTH: usize = 8000;
 
 // poll the log file and check for new messages, match them against a certain pattern to dermine if
 // we need to send anything to the clients
@@ -53,7 +56,7 @@ pub(crate) async fn update_messages(server: &mut Bridge, pattern: &Regex) -> Opt
         message_chars.iter().for_each(|c| message_out.push(*c));
         if message_chars.len() < 34 && !server.state {
             if let Some(true) = server.enabled {
-                if &message_out[10..33] == " [Server thread/INFO]: " {
+                if &message_chars[10..33].iter().collect::<String>() == " [Server thread/INFO]: " {
                     server.state = true;
                 } else {
                     return None;
@@ -61,14 +64,13 @@ pub(crate) async fn update_messages(server: &mut Bridge, pattern: &Regex) -> Opt
             }
         }
         if pattern.is_match(&line) {
-            // prevent potential panics from attempting to index weird unicode
-            message.push_str(&format!("[{}] {}\n", server.name, &message_out[33..]));
-            continue;
+            let _ = writeln!(&mut message,"[{}] {}", server.name, message_chars[33..].iter().collect::<String>());
         }
-        if message_out.len() > 52 && &message_out[10..33] == " [Server thread/INFO]: " {
-            let list_message: Vec<&str> = (&message_out[33..]).split_ascii_whitespace().collect();
+        if message_out.len() > 52 && &message_chars[10..33].iter().collect::<String>() == " [Server thread/INFO]: " {
+            let list_message = &message_chars[33..].iter().collect::<String>();
+            let list_message: Vec<&str> = list_message.split_ascii_whitespace().collect();
             if let Some(true) = server.enabled {
-                if &message_out[33..52] == "Stopping the server" {
+                if &message_chars[33..52].iter().collect::<String>() == "Stopping the server" {
                     server.state = false;
                     continue;
                 }
@@ -83,7 +85,7 @@ pub(crate) async fn update_messages(server: &mut Bridge, pattern: &Regex) -> Opt
         }
     }
     // if the log file is above 8k we can reset it to prevent parsing time from building up
-    if server.line > 8000 {
+    if server.line > MAX_PIPE_LENGTH {
         // reset pipe file and notify
         gen_pipe(&server.name, true).await;
         server.line = 0;
