@@ -202,6 +202,7 @@ pub(crate) async fn delete_backups_older_than(name: &str, time: u64, backup_loca
 
 pub(crate) async fn list_backups(backup_locations: &Vec<Session>) -> String {
     let mut response = Vec::new();
+    let mut used_locations = Vec::with_capacity(backup_locations.len());
     for location in backup_locations {
         let dir = PathBuf::from(if let Some(v) = &location.game {
             match &v.backup_path {
@@ -211,6 +212,11 @@ pub(crate) async fn list_backups(backup_locations: &Vec<Session>) -> String {
         } else {
             CONFIG.read().await.backup_location.to_owned()
         });
+        // horrible, but temp fix for now to prevent reading the same path like 50 times
+        if used_locations.contains(&dir) {
+            continue;
+        }
+        used_locations.push(dir.clone());
         if !dir.exists() {
             match fs::create_dir_all(dir) {
                 Ok(_) => {}
