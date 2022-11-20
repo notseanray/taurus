@@ -70,7 +70,7 @@ pub(crate) async fn update_messages(server: &mut Bridge, pattern: &Regex) -> Opt
             let list_message = &message_chars[33..].iter().collect::<String>();
             let list_message: Vec<&str> = list_message.split_ascii_whitespace().collect();
             if let Some(true) = server.enabled {
-                if &message_chars[33..52].iter().collect::<String>() == "Stopping the server" {
+                if message_chars[33..52] == "Stopping the server".chars().collect::<Vec<char>>() {
                     server.state = false;
                     continue;
                 }
