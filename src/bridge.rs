@@ -1,12 +1,12 @@
 use crate::{backup::Game, config::Rcon, ws::SESSIONS};
 use regex::Regex;
 use serde_derive::{Deserialize, Serialize};
+use std::fmt::Write;
 use std::io::{BufRead, BufReader};
 use std::{
     fs::{self, File},
     path::PathBuf,
 };
-use std::fmt::Write;
 use tokio::process::Command;
 
 #[derive(Serialize)]
@@ -23,7 +23,7 @@ const MAX_PIPE_LENGTH: usize = 8000;
 // we need to send anything to the clients
 #[inline(always)]
 pub(crate) async fn update_messages(server: &mut Bridge, pattern: &Regex) -> Option<String> {
-    if server.enabled == None {
+    if server.enabled? {
         return None;
     }
     let file_path: String = format!("/tmp/{}-taurus", server.name);
@@ -64,9 +64,16 @@ pub(crate) async fn update_messages(server: &mut Bridge, pattern: &Regex) -> Opt
             }
         }
         if pattern.is_match(&line) {
-            let _ = writeln!(&mut message,"[{}] {}", server.name, message_chars[33..].iter().collect::<String>());
+            let _ = writeln!(
+                &mut message,
+                "[{}] {}",
+                server.name,
+                message_chars[33..].iter().collect::<String>()
+            );
         }
-        if message_out.len() > 52 && &message_chars[10..33].iter().collect::<String>() == " [Server thread/INFO]: " {
+        if message_out.len() > 52
+            && &message_chars[10..33].iter().collect::<String>() == " [Server thread/INFO]: "
+        {
             let list_message = &message_chars[33..].iter().collect::<String>();
             let list_message: Vec<&str> = list_message.split_ascii_whitespace().collect();
             if let Some(true) = server.enabled {
@@ -117,7 +124,7 @@ pub fn set_lines(server_name: &str) -> usize {
 pub fn replace_formatting(msg: &str) -> String {
     // regex to replace any '§' and following character, from MC color codes
     let replacements = Regex::new("§.").unwrap();
-    let msg = replacements.replace_all(msg, "").to_owned().to_string();
+    let msg = replacements.replace_all(msg, "").to_string();
     // ideally this would be redone using more regex, if possible, but this works alright for now
     msg.trim_end()
         .replace('\r', "\\r")

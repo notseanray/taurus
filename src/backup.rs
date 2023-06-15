@@ -7,6 +7,9 @@ use tokio::{
     process::Command,
 };
 
+// seconds, must be less than 3600
+const SLOTTED_BACKUP_EPSILON: u64 = 1800;
+
 // options for a session running a server that contains a chat bridge
 #[derive(Serialize, Deserialize, Clone)]
 pub(crate) struct Game {
@@ -14,11 +17,244 @@ pub(crate) struct Game {
     pub backup_path: Option<String>,
     pub backup_interval: Option<u64>,
     pub backup_keep: Option<u64>,
+    // TODO make mutally exclusive from above
+    pub hourly_slots: Option<u64>,
+    pub daily_slots: Option<u64>,
+    pub weekly_slots: Option<u64>,
+    pub monthly_slots: Option<u64>,
     in_game_cmd: Option<bool>,
     pub chat_bridge: Option<bool>,
 }
 
+#[derive(Clone)]
+pub(crate) struct BackupSlot {
+    pub name: String,
+    // time backup has existed since cycle
+    pub elapsed_time: u64,
+}
+
+impl PartialEq for BackupSlot {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+
+macro_rules! create_backup {
+    ($self:expr, $sys:expr, $name:expr, $clock:expr, $interval:expr, $backup_type:expr) => {{
+        let timing = $backup_type.is_some() && $clock % $interval == 0;
+        if timing {
+            let _ = $self
+                .backup(
+                    $sys,
+                    $name.to_string(),
+                    CONFIG.read().await.backup_location.clone(),
+                )
+                .await;
+        };
+        timing
+    }};
+}
+
 impl Game {
+    pub(crate) async fn delete_slotted_backups(
+        &self,
+        name: &str,
+        time: u64,
+        backup_location: &str,
+    ) {
+        let dir = PathBuf::from(backup_location);
+        if !dir.exists() {
+            return;
+        }
+        let mut backups = match dir.read_dir() {
+            Ok(v) => v
+                .flatten()
+                .filter_map(|x| {
+                    if let Ok(v) = x.metadata() {
+                        if let Ok(v) = v.created() {
+                            Some((
+                                x,
+                                SystemTime::now().duration_since(v).unwrap().as_secs()
+                                    / SLOTTED_BACKUP_EPSILON,
+                            ))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>(),
+            Err(_) => return,
+        };
+        // sort by least recent to most recent
+        backups.sort_by(|l, r| r.1.partial_cmp(&l.1).unwrap());
+        // backup time is duration since backup / SLOTTED_BACKUP_EPSILON
+        // 6 hourly backup slots
+        // 2 daily slots
+        // if the last 6 hourly backup slots are full
+        // keep the oldest until its age is over a day, consider it a daily
+        let mut monthy = Vec::new();
+        let mut weekly = Vec::new();
+        let mut daily = Vec::new();
+        let mut hourly = Vec::new();
+        for (backup, backup_time) in backups {
+            let fname = backup.file_name().to_string_lossy().to_string();
+            if name != "_" && !(fname.len() > name.len() && fname.starts_with(name)) {
+                continue;
+            }
+
+            if let Some(v) = self.monthly_slots {
+                if backup_time % (3600 * 24 * 7 * 30) / SLOTTED_BACKUP_EPSILON == 0 {
+                    monthy.push(BackupSlot {
+                        name: fname.clone(),
+                        elapsed_time: backup_time,
+                    });
+                    let v = v as usize;
+                    if monthy.len() > v {
+                        for slot in &monthy.as_slice()[0..v] {
+                            let _ = remove_file(
+                                PathBuf::from(&CONFIG.read().await.backup_location)
+                                    .join(slot.name.clone()),
+                            )
+                            .await;
+                        }
+                        monthy = monthy.as_slice()[v..].to_vec();
+                    }
+                }
+            }
+            if let Some(v) = self.weekly_slots {
+                if backup_time % (3600 * 24 * 7) / SLOTTED_BACKUP_EPSILON == 0
+                    && backup_time < (3600 * 24 * 7 * 30) / SLOTTED_BACKUP_EPSILON
+                {
+                    weekly.push(BackupSlot {
+                        name: fname.clone(),
+                        elapsed_time: backup_time,
+                    });
+                    let v = v as usize;
+                    if weekly.len() > v {
+                        for slot in &weekly.as_slice()[0..v] {
+                            if monthy.contains(slot) {
+                                continue;
+                            }
+                            let _ = remove_file(
+                                PathBuf::from(&CONFIG.read().await.backup_location)
+                                    .join(slot.name.clone()),
+                            )
+                            .await;
+                        }
+                        weekly = weekly.as_slice()[v..].to_vec();
+                    }
+                }
+            }
+            if let Some(v) = self.daily_slots {
+                if backup_time % (3600 * 24) / SLOTTED_BACKUP_EPSILON == 0
+                    && backup_time < (3600 * 24 * 7) / SLOTTED_BACKUP_EPSILON
+                {
+                    daily.push(BackupSlot {
+                        name: fname.clone(),
+                        elapsed_time: backup_time,
+                    });
+                    let v = v as usize;
+                    if daily.len() > v {
+                        for slot in &daily.as_slice()[0..v] {
+                            if weekly.contains(slot) {
+                                continue;
+                            }
+                            let _ = remove_file(
+                                PathBuf::from(&CONFIG.read().await.backup_location)
+                                    .join(slot.name.clone()),
+                            )
+                            .await;
+                        }
+                        daily = daily.as_slice()[v..].to_vec();
+                    }
+                }
+            }
+            if let Some(v) = self.hourly_slots {
+                if backup_time % 3600 / SLOTTED_BACKUP_EPSILON == 0
+                    && backup_time < (3600 * 24) / SLOTTED_BACKUP_EPSILON
+                {
+                    hourly.push(BackupSlot {
+                        name: fname.clone(),
+                        elapsed_time: backup_time,
+                    });
+                    let v = v as usize;
+                    if hourly.len() > v {
+                        for slot in &hourly.as_slice()[0..v] {
+                            if daily.contains(slot) {
+                                continue;
+                            }
+                            let _ = remove_file(
+                                PathBuf::from(&CONFIG.read().await.backup_location)
+                                    .join(slot.name.clone()),
+                            )
+                            .await;
+                        }
+                        hourly = hourly.as_slice()[v..].to_vec();
+                    }
+                }
+            }
+        }
+    }
+
+    fn is_slotted_backups(&self) -> bool {
+        self.hourly_slots.is_some()
+            || self.daily_slots.is_some()
+            || self.weekly_slots.is_some()
+            || self.monthly_slots.is_some()
+    }
+
+    pub(crate) async fn perform_slotted_backups(&self, clock: u64, sys: &Sys, name: &str) {
+        // monthy
+        if create_backup!(
+            self,
+            sys,
+            name,
+            clock,
+            3600 * 24 * 7 * 30,
+            self.monthly_slots
+        ) {
+            return;
+        }
+        // weekly
+        if create_backup!(self, sys, name, clock, 3600 * 24 * 7, self.monthly_slots) {
+            return;
+        }
+        // daily
+        if create_backup!(self, sys, name, clock, 3600 * 24, self.monthly_slots) {
+            return;
+        }
+        // hour
+        let _ = create_backup!(self, sys, name, clock, 3600, self.monthly_slots);
+    }
+
+    pub(crate) async fn perform_scheduled_backups(&self, name: &str, time: u64, sys: &Sys) {
+        let default_backup_location = &CONFIG.read().await.backup_location;
+        let backup_location = self.backup_path.as_ref().unwrap_or(default_backup_location);
+        if self.is_slotted_backups() {
+            self.perform_slotted_backups(time, sys, name).await;
+            self.delete_slotted_backups(name, time, backup_location)
+                .await;
+            return;
+        }
+        if self.backup_interval.is_none() {
+            return;
+        }
+        if time % self.backup_interval.unwrap() == 0 {
+            let _ = self
+                .backup(
+                    sys,
+                    name.to_string(),
+                    CONFIG.read().await.backup_location.clone(),
+                )
+                .await;
+            if let Some(v) = self.backup_keep {
+                delete_backups_older_than(name, v, backup_location).await;
+            }
+        }
+    }
+
     pub(crate) async fn copy_region(&self, dim: &str, x: i32, y: i32) -> String {
         if self.file_path.is_none()
             || CONFIG.read().await.webserver_location.is_none()

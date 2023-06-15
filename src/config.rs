@@ -110,7 +110,7 @@ impl Config {
 
         let data = match fs::read_to_string(path.to_owned() + "/config.json") {
             Ok(t) => t,
-            Err(e) => {
+            Err(_) => {
                 error!("no config file found at {}!", path);
                 eprintln!("*info: generating default config");
                 Config::default_root_cfg(path.to_owned());
@@ -124,7 +124,7 @@ impl Config {
 
         let conf: Self = match from_str(&data) {
             Ok(t) => t,
-            Err(e) => {
+            Err(_) => {
                 error!("invalid config file! exiting");
                 exit!();
             }

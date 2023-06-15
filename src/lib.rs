@@ -135,27 +135,8 @@ pub async fn run() {
                         Some(v) => v,
                         None => continue,
                     };
-                    if game.backup_interval.is_none() {
-                        continue;
-                    }
-                    if clock % game.backup_interval.unwrap() == 0 {
-                        let _ = game
-                            .backup(
-                                &sys,
-                                i.name.clone(),
-                                CONFIG.read().await.backup_location.clone(),
-                            )
-                            .await;
-                        if let Some(v) = game.backup_keep {
-                            delete_backups_older_than(
-                                &i.name,
-                                v,
-                                (&game.backup_path.as_ref())
-                                    .unwrap_or(&CONFIG.read().await.backup_location),
-                            )
-                            .await;
-                        }
-                    }
+                    game.perform_scheduled_backups(i.name.as_str(), clock, &sys)
+                        .await;
                 }
                 // todo if disk is low then reduce keep time
             }
