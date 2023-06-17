@@ -56,6 +56,11 @@ macro_rules! create_backup {
 }
 
 impl Game {
+    /* given a list of backup timestamps, new backup every hour
+     * if the amount of hourly backups exceed the amount of slots, save one for weekly
+     * if there are two slots for weekly
+     *
+     */
     pub(crate) async fn delete_slotted_backups(
         &self,
         name: &str,
@@ -94,16 +99,16 @@ impl Game {
         // 2 daily slots
         // if the last 6 hourly backup slots are full
         // keep the oldest until its age is over a day, consider it a daily
-        let mut monthy = Vec::new();
-        let mut weekly = Vec::new();
-        let mut daily = Vec::new();
-        let mut hourly = Vec::new();
+        let mut monthy = Vec::with_capacity(self.monthly_slots.unwrap_or(0) as usize);
+        let mut weekly = Vec::with_capacity(self.weekly_slots.unwrap_or(0) as usize);
+        let mut daily = Vec::with_capacity(self.daily_slots.unwrap_or(0) as usize);
+        let mut hourly = Vec::with_capacity(self.hourly_slots.unwrap_or(0) as usize);
         for (backup, backup_time) in backups {
             let fname = backup.file_name().to_string_lossy().to_string();
             if name != "_" && !(fname.len() > name.len() && fname.starts_with(name)) {
                 continue;
             }
-
+            let backup_time = backup_time / SLOTTED_BACKUP_EPSILON;
             if let Some(v) = self.monthly_slots {
                 if backup_time % (3600 * 24 * 7 * 30) / SLOTTED_BACKUP_EPSILON == 0 {
                     monthy.push(BackupSlot {
@@ -113,6 +118,10 @@ impl Game {
                     let v = v as usize;
                     if monthy.len() > v {
                         for slot in &monthy.as_slice()[0..v] {
+                            println!("delete {}", slot.name);
+                            if true {
+                                continue;
+                            }
                             let _ = remove_file(
                                 PathBuf::from(&CONFIG.read().await.backup_location)
                                     .join(slot.name.clone()),
@@ -135,6 +144,21 @@ impl Game {
                     if weekly.len() > v {
                         for slot in &weekly.as_slice()[0..v] {
                             if monthy.contains(slot) {
+                                continue;
+                            }
+                            if let Some(x) = weekly.last() {
+                                if backup_time as isize
+                                    == x.elapsed_time as isize
+                                        - (3600 * 24 * 7 * 30 / SLOTTED_BACKUP_EPSILON as isize)
+                                {
+                                    continue;
+                                }
+                            }
+                            if monthy.capacity() > 0 && daily.is_empty() {
+                                continue;
+                            }
+                            println!("delete {}", slot.name);
+                            if true {
                                 continue;
                             }
                             let _ = remove_file(
@@ -161,6 +185,21 @@ impl Game {
                             if weekly.contains(slot) {
                                 continue;
                             }
+                            if let Some(x) = weekly.last() {
+                                if backup_time as isize
+                                    == x.elapsed_time as isize
+                                        - (3600 * 24 * 7 / SLOTTED_BACKUP_EPSILON as isize)
+                                {
+                                    continue;
+                                }
+                            }
+                            if weekly.capacity() > 0 && daily.is_empty() {
+                                continue;
+                            }
+                            println!("delete {}", slot.name);
+                            if true {
+                                continue;
+                            }
                             let _ = remove_file(
                                 PathBuf::from(&CONFIG.read().await.backup_location)
                                     .join(slot.name.clone()),
@@ -180,9 +219,25 @@ impl Game {
                         elapsed_time: backup_time,
                     });
                     let v = v as usize;
+
                     if hourly.len() > v {
                         for slot in &hourly.as_slice()[0..v] {
                             if daily.contains(slot) {
+                                continue;
+                            }
+                            if let Some(x) = daily.last() {
+                                if backup_time as isize
+                                    == x.elapsed_time as isize
+                                        - (3600 * 24 / SLOTTED_BACKUP_EPSILON as isize)
+                                {
+                                    continue;
+                                }
+                            }
+                            if daily.capacity() > 0 && daily.is_empty() {
+                                continue;
+                            }
+                            println!("delete {}", slot.name);
+                            if true {
                                 continue;
                             }
                             let _ = remove_file(
