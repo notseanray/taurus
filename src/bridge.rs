@@ -23,7 +23,7 @@ const MAX_PIPE_LENGTH: usize = 8000;
 // we need to send anything to the clients
 #[inline(always)]
 pub(crate) async fn update_messages(server: &mut Bridge, pattern: &Regex) -> Option<String> {
-    if server.enabled? {
+    if server.enabled == None {
         return None;
     }
     let file_path: String = format!("/tmp/{}-taurus", server.name);
